@@ -1,8 +1,5 @@
-import logging
 from threaded import Threaded
-from common import configure_logging, runit
-
-logger = logging.getLogger(__name__)
+from common import runit
 
 class Item():
     def __init__(self, name):
@@ -35,5 +32,4 @@ def main():
     threaded.start()
 
 if __name__ == '__main__':
-    configure_logging()
     main()
