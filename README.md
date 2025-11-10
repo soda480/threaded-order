@@ -1,3 +1,6 @@
+[![ci](https://github.com/soda480/threaded-order/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/soda480/threaded-order/actions/workflows/ci.yml)
+[![PyPI version](https://badge.fury.io/py/threaded-order.svg)](https://badge.fury.io/py/threaded-order)
+
 # threaded-order
 A lightweight Python framework for running functions concurrently across multiple threads while maintaining a defined execution order. It lets you declare relationships between tasks—so some run only after others complete—without building complex orchestration logic. Perfect for dependency-aware test execution, build pipelines, or automation flows that benefit from controlled concurrency.
 
