@@ -65,6 +65,7 @@ class ThreadedOrder:
     def _has_cycle(self):
         visited = set()
         stack = set()
+
         def visit(node):
             if node in stack:
                 return True
