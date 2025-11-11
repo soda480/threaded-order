@@ -369,27 +369,31 @@ class ThreadedOrder:
             return
         logger = logging.getLogger(threading.current_thread().name)
         try:
-            callback(*args)
+            if isinstance(callback, tuple):
+                function, user_args, user_kwargs = callback
+                function(*args, *user_args, **user_kwargs)
+            else:
+                callback(*args)
         except Exception:
             callback_name = getattr(callback, '__name__', callback)
             logger.debug(f'callback {callback_name!r} failed', exc_info=True)
 
-    def on_task_start(self, function):
+    def on_task_start(self, function, *args, **kwargs):
         """ register callback fired when a task is about to start
         """
-        self._on_task_start = function
+        self._on_task_start = (function, args, kwargs)
 
-    def on_task_done(self, function):
+    def on_task_done(self, function, *args, **kwargs):
         """ register callback fired when a task finishes execution
         """
-        self._on_task_done = function
+        self._on_task_done = (function, args, kwargs)
 
-    def on_scheduler_start(self, function):
+    def on_scheduler_start(self, function, *args, **kwargs):
         """ register callback fired when the scheduler begins execution
         """
-        self._on_scheduler_start = function
+        self._on_scheduler_start = (function, args, kwargs)
 
-    def on_scheduler_done(self, function):
+    def on_scheduler_done(self, function, *args, **kwargs):
         """ register callback fired when the scheduler completes all tasks
         """
-        self._on_scheduler_done = function
+        self._on_scheduler_done = (function, args, kwargs)
