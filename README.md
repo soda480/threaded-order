@@ -2,13 +2,16 @@
 [![PyPI version](https://badge.fury.io/py/threaded-order.svg)](https://badge.fury.io/py/threaded-order)
 
 # threaded-order
-A lightweight Python framework for running functions concurrently across multiple threads while maintaining a defined execution order. It lets you declare relationships between tasks—so some run only after others complete—without building complex orchestration logic. Perfect for dependency-aware test execution, build pipelines, or automation flows that benefit from controlled concurrency.
+A lightweight Python framework for running functions concurrently across multiple threads while maintaining defined execution order. It lets you declare dependencies between tasks—so some run only after others complete—without complex orchestration code. 
 
-Key features:
-* Executes functions concurrently with Python threads
-* Dependency graph determines execution order
-* Simple base class for registering and managing tasks
-* Thread-safe logging and status tracking
+Ideal for dependency-aware test execution, build pipelines, and automation workflows that benefit from controlled concurrency.
+
+Key Features
+* Concurrent task execution using Python threads
+* Dependency graph automatically determines order
+* Simple registration and decorator API
+* Thread-safe logging, callbacks, and run summary
+* Graceful shutdown on interrupt
 
 ## Installation
 
@@ -16,37 +19,74 @@ Key features:
 pip install threaded-order
 ```
 
-## Usage
+## Simple Example
+```
+from threaded_order import ThreadedOrder, ThreadProxyLogger
+from time import sleep
+
+to = ThreadedOrder(workers=3, setup_logging=True)
+logger = ThreadProxyLogger()
+
+@to.dregister()
+def a(): sleep(1); logger.info("a")
+
+@to.dregister(after=['a'])
+def b(): sleep(1); logger.info("b")
+
+@to.dregister(after=['a'])
+def c(): sleep(1); logger.info("c")
+
+@to.dregister(after=['b', 'c'])
+def d(): sleep(1); logger.info("d")
+
+if __name__ == '__main__':
+    to.on_scheduler_done(lambda s: print(f"Passed:{len(s['passed'])} Failed:{len(s['failed'])}"))
+    to.start()
+```
+
+Output:
+```
+2025-11-11 22:07:33 [MainThread]: starting thread pool with 3 threads
+2025-11-11 22:07:34 [thread_0]: a
+2025-11-11 22:07:35 [thread_1]: c
+2025-11-11 22:07:35 [thread_0]: b
+2025-11-11 22:07:36 [thread_1]: d
+2025-11-11 22:07:36 [MainThread]: all work completed
+2025-11-11 22:07:36 [MainThread]: duration: 3.01s
+Passed:4 Failed:0
+```
 
 See examples in examples folder. To run examples, follow instructions below to build and run the Docker container then execute:
 
-```
-python -m pip install -e .[dev]
-```
+## API Overview
+`class ThreadedOrder(workers=None, setup_logging=False, add_stream_handler=True)`
 
-```
-python examples/example1.py
-2025-11-10 00:08:31 [thread_M]: starting thread pool with 5 threads
-2025-11-10 00:08:37 [thread_1]: i02 completed
-2025-11-10 00:08:39 [thread_0]: i01 completed
-2025-11-10 00:08:40 [thread_2]: i03 completed
-2025-11-10 00:08:40 [thread_3]: i04 completed
-2025-11-10 00:08:44 [thread_3]: i07 completed
-2025-11-10 00:08:47 [thread_0]: i05 completed
-2025-11-10 00:08:48 [thread_1]: i06 completed
-2025-11-10 00:08:52 [thread_1]: i10 completed
-2025-11-10 00:08:53 [thread_0]: i09 completed
-2025-11-10 00:08:56 [thread_3]: i08 completed
-2025-11-10 00:08:59 [thread_1]: i11 completed
-2025-11-10 00:09:00 [thread_0]: i12 completed
-2025-11-10 00:09:01 [thread_3]: i13 completed
-2025-11-10 00:09:03 [thread_1]: i14 completed
-2025-11-10 00:09:07 [thread_0]: i15 completed
-2025-11-10 00:09:09 [thread_3]: i16 completed
-2025-11-10 00:09:20 [thread_3]: i17 completed
-2025-11-10 00:09:20 [thread_M]: all work completed
-2025-11-10 00:09:20 [thread_M]: duration: 48.89s
-```
+Runs registered callables across multiple threads while respecting declared dependencies.
+
+### Core Methods
+| Method | Description |
+| --- | --- |
+| `register(obj, name, after=None)` |	Register a callable for execution. after defines dependencies by name. |
+| `dregister(after=None)` |	Decorator variant of register() for inline task definitions. |
+| `start()` |	Start execution, respecting dependencies. Returns a summary dictionary. |
+
+### Callbacks
+
+All are optional and run on the scheduler thread (never worker threads).
+
+| Callback | When Fired | Signature |
+| --- | --- | --- |
+| `on_task_start(fn)`      | Before a task starts | (name) |
+| `on_task_done(fn)`       | After a task finishes | (name, ok) |
+| `on_scheduler_start(fn)` | Before scheduler starts running tasks | (meta) |
+| `on_scheduler_done(fn)`  | After all tasks complete | (summary) |
+
+### Interrupt Handling
+
+Press Ctrl-C during execution to gracefully cancel outstanding work:
+* Running tasks finish naturally or are marked as cancelled
+* Remaining queued tasks are discarded
+* Final summary reflects all results
 
 ## Development
 

@@ -9,7 +9,7 @@ class ThreadProxyLogger:
 
 def configure_logging(workers, prefix='thread', add_stream_handler=False):
     if add_stream_handler:
-        shandler = logging.StreamHandler()
+        shandler = logging.StreamHandler(stream=sys.stderr)
         shandler.setLevel(logging.INFO)
         shandler.setFormatter(
             logging.Formatter(
