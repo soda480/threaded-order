@@ -1,0 +1,47 @@
+2025-11-22 23:27:59 DEBUG [MainThread] add: add a dependent on []
+2025-11-22 23:27:59 DEBUG [MainThread] add: add b dependent on ['a']
+2025-11-22 23:27:59 DEBUG [MainThread] add: add c dependent on ['a']
+2025-11-22 23:27:59 DEBUG [MainThread] add: add d dependent on ['c']
+2025-11-22 23:27:59 DEBUG [MainThread] add: add e dependent on ['c']
+2025-11-22 23:27:59 DEBUG [MainThread] add: add f dependent on ['b', 'd']
+2025-11-22 23:27:59 INFO  [MainThread] start: starting thread pool with 3 threads
+2025-11-22 23:27:59 DEBUG [MainThread] log_candidates: requested 3 and found 1 candidate eligible for submission a
+2025-11-22 23:27:59 DEBUG [MainThread] _submit: submitting 'a' to thread pool
+2025-11-22 23:27:59 DEBUG [MainThread] _submit: adding a to active futures
+2025-11-22 23:28:01 DEBUG [MainThread] _handle_event: removing 'a' from active futures
+2025-11-22 23:28:01 DEBUG [MainThread] remove: removing a as a dependency from c
+2025-11-22 23:28:01 DEBUG [MainThread] remove: removing a as a dependency from b
+2025-11-22 23:28:01 DEBUG [MainThread] remove: removing a from dependency graph
+2025-11-22 23:28:01 DEBUG [MainThread] log_candidates: requested 3 and found 2 candidates eligible for submission b, c
+2025-11-22 23:28:01 DEBUG [MainThread] _submit: submitting 'b' to thread pool
+2025-11-22 23:28:01 DEBUG [MainThread] _submit: adding b to active futures
+2025-11-22 23:28:01 DEBUG [MainThread] _submit: submitting 'c' to thread pool
+2025-11-22 23:28:01 DEBUG [MainThread] _submit: adding c to active futures
+2025-11-22 23:28:02 DEBUG [MainThread] _handle_event: removing 'c' from active futures
+2025-11-22 23:28:02 DEBUG [MainThread] remove: removing c as a dependency from d
+2025-11-22 23:28:02 DEBUG [MainThread] remove: removing c as a dependency from e
+2025-11-22 23:28:02 DEBUG [MainThread] remove: removing c from dependency graph
+2025-11-22 23:28:02 DEBUG [MainThread] log_candidates: requested 2 and found 2 candidates eligible for submission d, e
+2025-11-22 23:28:02 DEBUG [MainThread] _submit: submitting 'd' to thread pool
+2025-11-22 23:28:02 DEBUG [MainThread] _submit: adding d to active futures
+2025-11-22 23:28:02 DEBUG [MainThread] _submit: submitting 'e' to thread pool
+2025-11-22 23:28:02 DEBUG [MainThread] _submit: adding e to active futures
+2025-11-22 23:28:02 DEBUG [MainThread] _handle_event: removing 'e' from active futures
+2025-11-22 23:28:02 DEBUG [MainThread] remove: removing e from dependency graph
+2025-11-22 23:28:02 DEBUG [MainThread] log_candidates: requested 1 but found no candidates eligible for submission
+2025-11-22 23:28:03 DEBUG [MainThread] _handle_event: removing 'b' from active futures
+2025-11-22 23:28:03 DEBUG [MainThread] remove: removing b as a dependency from f
+2025-11-22 23:28:03 DEBUG [MainThread] remove: removing b from dependency graph
+2025-11-22 23:28:03 DEBUG [MainThread] log_candidates: requested 2 but found no candidates eligible for submission
+2025-11-22 23:28:04 DEBUG [MainThread] _handle_event: removing 'd' from active futures
+2025-11-22 23:28:04 DEBUG [MainThread] remove: removing d as a dependency from f
+2025-11-22 23:28:04 DEBUG [MainThread] remove: removing d from dependency graph
+2025-11-22 23:28:04 DEBUG [MainThread] log_candidates: requested 3 and found 1 candidate eligible for submission f
+2025-11-22 23:28:04 DEBUG [MainThread] _submit: submitting 'f' to thread pool
+2025-11-22 23:28:04 DEBUG [MainThread] _submit: adding f to active futures
+2025-11-22 23:28:04 DEBUG [MainThread] _handle_event: removing 'f' from active futures
+2025-11-22 23:28:04 DEBUG [MainThread] remove: removing f from dependency graph
+2025-11-22 23:28:04 DEBUG [MainThread] log_candidates: requested 3 but found no candidates eligible for submission
+2025-11-22 23:28:04 DEBUG [MainThread] _handle_event: nothing more to run and no active futures remain - signaling all done
+2025-11-22 23:28:04 INFO  [MainThread] start: all work completed
+2025-11-22 23:28:04 INFO  [MainThread] start: duration: 5.51s
