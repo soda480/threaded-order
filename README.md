@@ -19,47 +19,52 @@ Key Features
 pip install threaded-order
 ```
 
-## Simple Example
-```
+### Simple Example
+
+![graph](https://github.com/soda480/threaded-order/blob/main/docs/images/graph.png?raw=true)
+
+```Python
 from threaded_order import Scheduler, ThreadProxyLogger
-from time import sleep
+import time
+import random
 
 s = Scheduler(workers=3, setup_logging=True)
 logger = ThreadProxyLogger()
 
+def run(name):
+    time.sleep(random.uniform(.5, 3.5))
+    logger.info(f'{name} completed')
+
 @s.dregister()
-def a(): sleep(1); logger.info("a")
+def a(): run('a')
 
 @s.dregister(after=['a'])
-def b(): sleep(1); logger.info("b")
+def b(): run('b')
 
 @s.dregister(after=['a'])
-def c(): sleep(1); logger.info("c")
+def c(): run('c')
 
-@s.dregister(after=['b', 'c'])
-def d(): sleep(1); logger.info("d")
+@s.dregister(after=['c'])
+def d(): run('d')
+
+@s.dregister(after=['c'])
+def e(): run('e')
+
+@s.dregister(after=['b', 'd'])
+def f(): run('f')
 
 if __name__ == '__main__':
     s.on_scheduler_done(lambda s: print(f"Passed:{len(s['passed'])} Failed:{len(s['failed'])}"))
     s.start()
 ```
 
-Output:
-```
-2025-11-11 22:07:33 [MainThread]: starting thread pool with 3 threads
-2025-11-11 22:07:34 [thread_0]: a
-2025-11-11 22:07:35 [thread_1]: c
-2025-11-11 22:07:35 [thread_0]: b
-2025-11-11 22:07:36 [thread_1]: d
-2025-11-11 22:07:36 [MainThread]: all work completed
-2025-11-11 22:07:36 [MainThread]: duration: 3.01s
-Passed:4 Failed:0
-```
-### ProgressBar Integration
+![example4](https://github.com/soda480/threaded-order/blob/main/docs/images/example4.gif?raw=true)
 
-Can be done by using the `on_task_done` callback. See [example3b](https://github.com/soda480/threaded-order/blob/main/examples/example3b.py)
+### ProgressBar Integration Example
 
-![example1](https://github.com/soda480/threaded-order/blob/main/docs/images/example3b.gif?raw=true)
+Can be done by using the `on_task_done` callback. See [example3b](https://github.com/soda480/threaded-order/blob/main/examples/example5.py)
+
+![example5](https://github.com/soda480/threaded-order/blob/main/docs/images/example5.gif?raw=true)
 
 
 See examples in examples folder. To run examples, follow instructions below to build and run the Docker container then execute:

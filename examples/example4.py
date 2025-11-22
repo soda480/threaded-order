@@ -1,20 +1,31 @@
 from threaded_order import Scheduler, ThreadProxyLogger
-from time import sleep
+import time
+import random
 
 s = Scheduler(workers=3, setup_logging=True)
 logger = ThreadProxyLogger()
 
+def run(name):
+    time.sleep(random.uniform(.5, 3.5))
+    logger.info(f'{name} completed')
+
 @s.dregister()
-def a(): sleep(1); logger.info("a")
+def a(): run('a')
 
 @s.dregister(after=['a'])
-def b(): sleep(1); logger.info("b")
+def b(): run('b')
 
 @s.dregister(after=['a'])
-def c(): sleep(1); logger.info("c")
+def c(): run('c')
 
-@s.dregister(after=['b', 'c'])
-def d(): sleep(1); logger.info("d")
+@s.dregister(after=['c'])
+def d(): run('d')
+
+@s.dregister(after=['c'])
+def e(): run('e')
+
+@s.dregister(after=['b', 'd'])
+def f(): run('f')
 
 if __name__ == '__main__':
     s.on_scheduler_done(lambda s: print(f"Passed:{len(s['passed'])} Failed:{len(s['failed'])}"))
