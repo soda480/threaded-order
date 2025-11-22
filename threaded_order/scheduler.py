@@ -3,12 +3,13 @@ import time
 import queue
 import threading
 import logging
-from collections import defaultdict, Counter
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, CancelledError
 from functools import wraps
+from .graph import DAGraph
 from .logger import configure_logging
 
-class ThreadedOrder:
+class Scheduler:
     """ run functions concurrently across multiple threads while maintaining a defined
         execution order
     """
@@ -21,10 +22,8 @@ class ThreadedOrder:
         self._workers = workers
         # task name → callable object to execute
         self._run_map = {}
-        # task name → list of dependency names (parents)
-        self._dgraph = defaultdict(list)
-        # task name → set of dependents (children) for fast removal
-        self._children = defaultdict(set)
+        # direct acyclic graph
+        self._dagraph = DAGraph()
         # protects access to _futures (shared by scheduler and worker threads)
         self._lock = threading.Lock()
         # currently running task names
@@ -70,21 +69,8 @@ class ThreadedOrder:
         """
         if not callable(obj):
             raise ValueError('object must be callable')
-        logger = logging.getLogger(threading.current_thread().name)
-        logger.debug(f'add {name} dependent on {after}')
-        if name in self._run_map:
-            raise ValueError(f'{name} has already been added')
-        after = after or []
-        unknowns = [dname for dname in after if dname not in self._run_map]
-        if unknowns:
-            raise ValueError(f'{name} depends on unknown {unknowns}')
+        self._dagraph.add(name, after=after)
         self._run_map[name] = obj
-        self._dgraph[name] = []
-        for dname in after:
-            self._dgraph[name].append(dname)
-            self._children[dname].add(name)
-        if self._has_cycle():
-            raise ValueError(f'adding {name} will create a cycle')
 
     def dregister(self, after=None):
         """ decorator form of register() for convenient inline task definition
@@ -100,58 +86,7 @@ class ThreadedOrder:
             return wrapper
         return decorator
 
-    def _has_cycle(self):
-        """ return True if dependency graph contains a cycle
-        """
-        visited = set()
-        stack = set()
-
-        def visit(node):
-            if node in stack:
-                return True
-            if node in visited:
-                return False
-            visited.add(node)
-            stack.add(node)
-            for neighbor in self._dgraph[node]:
-                if visit(neighbor):
-                    return True
-            stack.remove(node)
-            return False
-        return any(visit(node) for node in self._run_map)
-
-    def _unregister(self, rname):
-        """ remove a completed task from all dependency lists
-        """
-        logger = logging.getLogger(threading.current_thread().name)
-        for name in self._children.pop(rname, ()):
-            logger.debug(f'removing {rname} as a dependency from {name}')
-            self._dgraph[name].remove(rname)
-        if rname in self._dgraph and not self._dgraph[rname]:
-            logger.debug(f'removing {rname} from dependency graph')
-            del self._dgraph[rname]
-
-    def _get_cands(self, number):
-        """ return up to `number` tasks whose dependencies are satisfied and not active
-        """
-        def _get_msg(found):
-            count = len(found)
-            if count == 0:
-                message = 'but found no candidates eligible for submission'
-            elif count == 1:
-                message = 'and found 1 candidate eligible for submission'
-            else:
-                message = f'and found {count} candidates eligible for submission'
-            return f"{message} {', '.join(found)}"
-        logger = logging.getLogger(threading.current_thread().name)
-        # ensure candidate selection stability for reproducable runs by sorting
-        cands = sorted([
-            name for name, deps in self._dgraph.items() if not deps and name not in self._active])
-        cands = cands[:number]
-        logger.debug(f'requested {number} {_get_msg(cands)}')
-        return cands
-
-    def _handle_events(self):
+    def _handle_event(self):
         """ process queued task and scheduler events on the scheduler thread
         """
         logger = logging.getLogger(threading.current_thread().name)
@@ -173,7 +108,7 @@ class ThreadedOrder:
                 name, ok, error_type, error = payload
                 logger.debug(f'removing {name!r} from active futures')
                 self._active.discard(name)
-                self._unregister(name)
+                self._dagraph.remove(name)
 
                 self._ran.append(name)
                 self._results[name] = {
@@ -189,9 +124,9 @@ class ThreadedOrder:
                 free = max(0, self._workers - len(self._active))
                 if free:
                     # keep pool full after dependency 'burst' - several tasks unblock at once
-                    for cand in self._get_cands(free):
+                    for cand in self._dagraph.get_candidates(self._active, free):
                         self._submit(cand)
-                if not self._dgraph and not self._active:
+                if self._dagraph.is_empty() and not self._active:
                     logger.debug(
                         'nothing more to run and no active futures remain - signaling all done')
                     self._completed.set()
@@ -237,14 +172,14 @@ class ThreadedOrder:
                 logger.debug(f'cancel() ignored for completed future: {exception}')
 
         # drain anything already completed and queued
-        self._handle_events()
+        self._handle_event()
 
         # mark any still-active tasks as cancelled (these never emitted a 'done' event)
         still_active = list(self._active)
         self._active.clear()
         for name in still_active:
             # remove from graph so completion logic won't wait on them
-            self._unregister(name)
+            self._dagraph.remove(name)
             # record cancellation
             self._ran.append(name)
             self._results[name] = {
@@ -289,15 +224,15 @@ class ThreadedOrder:
                 self._executor = executor
                 logger.info(f'starting thread pool with {self._workers} threads')
                 # initial seeding
-                for name in self._get_cands(self._workers):
+                for name in self._dagraph.get_candidates(self._active, self._workers):
                     self._submit(name)
 
                 # main loop of scheduler thread
                 while not self._completed.wait(timeout=0.1):
-                    self._handle_events()
+                    self._handle_event()
 
                 # final drain
-                self._handle_events()
+                self._handle_event()
                 logger.info('all work completed')
 
         except KeyboardInterrupt:
@@ -363,13 +298,6 @@ class ThreadedOrder:
             error = str(exception)
             logger.error(f'{name!r} failed: {error_type}: {error}')
         return (name, ok, error_type, error)
-
-    def __repr__(self):
-        """ return a human-readable representation of the dependency graph
-        """
-        rstr = '\n'.join([f'{name}: {deps}' for name, deps in self._dgraph.items()])
-        rstr1 = '\n'.join([f'{dep}: {name}' for dep, name in self._children.items()])
-        return f'Dependency Graph:\n{rstr}\nChildren:\n{rstr1}'
 
     def _callback(self, callback, *args):
         """ safely invoke a user callback, logging any exceptions raised
