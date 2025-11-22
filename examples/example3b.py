@@ -54,9 +54,12 @@ def i16():
 def i17():
     runit(i17.__name__)
 
+def start(name, pb):
+    pb.alias = f'started fn {name}'
+
 def increment(name, ok, pb):
     pb.count += 1
-    pb.alias = f'running fn {name}'
+    pb.alias = f'completed fn {name}'
 
 def main():
 
@@ -79,6 +82,7 @@ def main():
     s.register(i16, 'i16', after=['i12'])
     s.register(i17, 'i17', after=['i16'])
     with ProgressBar(total=17, clear_alias=True) as pb:
+        # s.on_task_start(start, pb)
         s.on_task_done(increment, pb)
         s.start()
 
