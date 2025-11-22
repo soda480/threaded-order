@@ -62,7 +62,7 @@ if __name__ == '__main__':
 
 ### ProgressBar Integration Example
 
-Can be done by using the `on_task_done` callback. See [example3b](https://github.com/soda480/threaded-order/blob/main/examples/example5.py)
+Can be done by using the `on_task_done` callback. See [example5](https://github.com/soda480/threaded-order/blob/main/examples/example5.py)
 
 ![example5](https://github.com/soda480/threaded-order/blob/main/docs/images/example5.gif?raw=true)
 
