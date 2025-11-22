@@ -55,11 +55,11 @@ Output:
 2025-11-11 22:07:36 [MainThread]: duration: 3.01s
 Passed:4 Failed:0
 ```
-## ProgressBar Integration
+### ProgressBar Integration
 
 Can be done by using the `on_task_done` callback. See [example3b](https://github.com/soda480/threaded-order/blob/main/examples/example3b.py)
 
-![example1](https://raw.githubusercontent.com/soda480/threaded-order/main/docs/images/example3b.gif)
+![example1](https://github.com/soda480/threaded-order/blob/main/docs/images/example3b.gif?raw=true)
 
 
 See examples in examples folder. To run examples, follow instructions below to build and run the Docker container then execute:
