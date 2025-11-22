@@ -1,4 +1,4 @@
-from threaded_order import ThreadedOrder
+from threaded_order import Scheduler
 from common import runit
 from progress1bar import ProgressBar
 
@@ -56,30 +56,31 @@ def i17():
 
 def increment(name, ok, pb):
     pb.count += 1
+    pb.alias = f'running fn {name}'
 
 def main():
 
-    threaded = ThreadedOrder(workers=5, setup_logging=True, add_stream_handler=False)
-    threaded.register(i01, 'i01')
-    threaded.register(i02, 'i02')
-    threaded.register(i03, 'i03')
-    threaded.register(i04, 'i04')
-    threaded.register(i05, 'i05', after=['i01'])
-    threaded.register(i06, 'i06', after=['i01'])
-    threaded.register(i07, 'i07', after=['i01'])
-    threaded.register(i08, 'i08', after=['i01'])
-    threaded.register(i09, 'i09', after=['i04'])
-    threaded.register(i10, 'i10', after=['i04'])
-    threaded.register(i11, 'i11', after=['i04'])
-    threaded.register(i12, 'i12', after=['i06'])
-    threaded.register(i13, 'i13', after=['i06'])
-    threaded.register(i14, 'i14', after=['i06'])
-    threaded.register(i15, 'i15', after=['i09'])
-    threaded.register(i16, 'i16', after=['i12'])
-    threaded.register(i17, 'i17', after=['i16'])
-    with ProgressBar(total=17) as pb:
-        threaded.on_task_done(increment, pb)
-        threaded.start()
+    s = Scheduler(workers=5, setup_logging=True, add_stream_handler=False)
+    s.register(i01, 'i01')
+    s.register(i02, 'i02')
+    s.register(i03, 'i03')
+    s.register(i04, 'i04')
+    s.register(i05, 'i05', after=['i01'])
+    s.register(i06, 'i06', after=['i01'])
+    s.register(i07, 'i07', after=['i01'])
+    s.register(i08, 'i08', after=['i01'])
+    s.register(i09, 'i09', after=['i04'])
+    s.register(i10, 'i10', after=['i04'])
+    s.register(i11, 'i11', after=['i04'])
+    s.register(i12, 'i12', after=['i06'])
+    s.register(i13, 'i13', after=['i06'])
+    s.register(i14, 'i14', after=['i06'])
+    s.register(i15, 'i15', after=['i09'])
+    s.register(i16, 'i16', after=['i12'])
+    s.register(i17, 'i17', after=['i16'])
+    with ProgressBar(total=17, clear_alias=True) as pb:
+        s.on_task_done(increment, pb)
+        s.start()
 
 if __name__ == '__main__':
     main()

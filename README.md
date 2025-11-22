@@ -21,27 +21,27 @@ pip install threaded-order
 
 ## Simple Example
 ```
-from threaded_order import ThreadedOrder, ThreadProxyLogger
+from threaded_order import Scheduler, ThreadProxyLogger
 from time import sleep
 
-to = ThreadedOrder(workers=3, setup_logging=True)
+s = Scheduler(workers=3, setup_logging=True)
 logger = ThreadProxyLogger()
 
-@to.dregister()
+@s.dregister()
 def a(): sleep(1); logger.info("a")
 
-@to.dregister(after=['a'])
+@s.dregister(after=['a'])
 def b(): sleep(1); logger.info("b")
 
-@to.dregister(after=['a'])
+@s.dregister(after=['a'])
 def c(): sleep(1); logger.info("c")
 
-@to.dregister(after=['b', 'c'])
+@s.dregister(after=['b', 'c'])
 def d(): sleep(1); logger.info("d")
 
 if __name__ == '__main__':
-    to.on_scheduler_done(lambda s: print(f"Passed:{len(s['passed'])} Failed:{len(s['failed'])}"))
-    to.start()
+    s.on_scheduler_done(lambda s: print(f"Passed:{len(s['passed'])} Failed:{len(s['failed'])}"))
+    s.start()
 ```
 
 Output:
@@ -55,11 +55,17 @@ Output:
 2025-11-11 22:07:36 [MainThread]: duration: 3.01s
 Passed:4 Failed:0
 ```
+## ProgressBar Integration
+
+Can be done by using the `on_task_done` callback. See [example3b](https://github.com/soda480/threaded-order/blob/main/examples/example3b.py)
+
+![example1](https://raw.githubusercontent.com/soda480/threaded-order/main/docs/images/example3b.gif)
+
 
 See examples in examples folder. To run examples, follow instructions below to build and run the Docker container then execute:
 
 ## API Overview
-`class ThreadedOrder(workers=None, setup_logging=False, add_stream_handler=True)`
+`class Scheduler(workers=None, setup_logging=False, add_stream_handler=True)`
 
 Runs registered callables across multiple threads while respecting declared dependencies.
 
