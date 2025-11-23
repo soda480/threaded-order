@@ -187,16 +187,16 @@ class Scheduler:
         # signal completion so the loop (if resumed) would exit
         self._completed.set()
 
-    def start(self):
-        """ run all registered tasks respecting dependencies, collect results, and trigger callbacks
+    def _prep_start(self):
+        """ prepare internal state for a fresh run
         """
-        logger = logging.getLogger(threading.current_thread().name)
+        # reset tracking structures
         self._ran.clear()
         self._results.clear()
         self._failed.clear()
         self._completed.clear()
         self._futures.clear()
-
+        self._active.clear()
         # drain any stale events
         try:
             while True:
@@ -204,8 +204,14 @@ class Scheduler:
         except queue.Empty:
             pass
 
-        self._timer.start()
+    def start(self):
+        """ run all registered tasks respecting dependencies, collect results, and trigger callbacks
+        """
+        logger = logging.getLogger(threading.current_thread().name)
 
+        self._prep_start()
+
+        self._timer.start()
         meta = {
             'total_tasks': len(self._callables),
             'workers': self._workers,
@@ -236,6 +242,8 @@ class Scheduler:
         finally:
             self._timer.stop()
             logger.info(f'duration: {self._timer.duration:.2f}s')
+
+            # build and return summary
             summary = self._build_summary()
             self._callback(self._on_scheduler_done, summary)
             return summary
@@ -246,6 +254,7 @@ class Scheduler:
         logger = logging.getLogger(threading.current_thread().name)
         logger.debug(f'submitting {name!r} to thread pool')
 
+        # queue 'start' event
         self._events.put(('start', name))
 
         future = self._executor.submit(self._run, name)
@@ -270,6 +279,8 @@ class Scheduler:
             # cleanup no matter what
             with self._lock:
                 self._futures.pop(future, '<unknown>')
+
+        # queue 'done' event
         self._events.put(('done', payload))
 
     def _run(self, name):
@@ -277,8 +288,11 @@ class Scheduler:
         """
         thread = threading.current_thread().name
         logger = logging.getLogger(thread)
+
+        # queue 'run' event
         payload = (name, thread)
         self._events.put(('run', payload))
+
         logger.debug(f'run {name!r}')
         ok = True
         error_type = None
