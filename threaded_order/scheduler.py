@@ -1,5 +1,4 @@
 import os
-import time
 import queue
 import threading
 import logging
@@ -7,7 +6,9 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, CancelledError
 from functools import wraps
 from .graph import DAGraph
+from .timer import Timer
 from .logger import configure_logging
+
 
 class Scheduler:
     """ run functions concurrently across multiple threads while maintaining a defined
@@ -21,9 +22,9 @@ class Scheduler:
         # number of concurrent worker threads in the pool
         self._workers = workers
         # task name → callable object to execute
-        self._run_map = {}
+        self._callables = {}
         # direct acyclic graph
-        self._dagraph = DAGraph()
+        self._graph = DAGraph()
         # protects access to _futures (shared by scheduler and worker threads)
         self._lock = threading.Lock()
         # currently running task names
@@ -36,30 +37,22 @@ class Scheduler:
         self._executor = None
         # thread-safe queue for passing start/done events from workers to scheduler
         self._events = queue.Queue()
-        # wall-clock start time (UTC seconds)
-        self._started_wall = 0.0
-        # wall-clock finish time (UTC seconds)
-        self._finished_wall = 0.0
-        # monotonic clock start time (for precise duration measurement)
-        self._started_mono = 0.0
-        # monotonic clock finish time (for precise duration measurement)
-        self._finished_mono = 0.0
-        # list of task names that have run (in order of completion)
+
+        # timing info
+        self._timer = Timer()
+
+        # results tracking
         self._ran = []
-        # task name → result details (ok, error_type, error)
         self._results = {}
-        # list of task names that failed
         self._failed = []
-        # user callback fired when a task is about to start
+
+        # user-defined callbacks
         self._on_task_start = None
-        # user callback fired when a task is running on thread
         self._on_task_run = None
-        # user callback fired when a task completes
         self._on_task_done = None
-        # user callback fired when the scheduler begins execution
         self._on_scheduler_start = None
-        # user callback fired when the scheduler finishes all tasks
         self._on_scheduler_done = None
+
         self._prefix = 'thread'
         if setup_logging:
             configure_logging(workers, prefix=self._prefix, add_stream_handler=add_stream_handler)
@@ -69,8 +62,8 @@ class Scheduler:
         """
         if not callable(obj):
             raise ValueError('object must be callable')
-        self._dagraph.add(name, after=after)
-        self._run_map[name] = obj
+        self._graph.add(name, after=after)
+        self._callables[name] = obj
 
     def dregister(self, after=None):
         """ decorator form of register() for convenient inline task definition
@@ -108,8 +101,7 @@ class Scheduler:
                 name, ok, error_type, error = payload
                 logger.debug(f'removing {name!r} from active futures')
                 self._active.discard(name)
-                self._dagraph.remove(name)
-
+                self._graph.remove(name)
                 self._ran.append(name)
                 self._results[name] = {
                     'ok': ok,
@@ -120,13 +112,16 @@ class Scheduler:
                     self._failed.append(name)
 
                 self._callback(self._on_task_done, name, ok)
+
                 # schedule next candidate
                 free = max(0, self._workers - len(self._active))
                 if free:
                     # keep pool full after dependency 'burst' - several tasks unblock at once
-                    for cand in self._dagraph.get_candidates(self._active, free):
+                    for cand in self._graph.get_candidates(self._active, free):
                         self._submit(cand)
-                if self._dagraph.is_empty() and not self._active:
+
+                # check for overall completion
+                if self._graph.is_empty() and not self._active:
                     logger.debug(
                         'nothing more to run and no active futures remain - signaling all done')
                     self._completed.set()
@@ -152,9 +147,9 @@ class Scheduler:
             'failed': failed,
             'failures': failures,
             'failure_counts': dict(failure_counts),
-            'started_at': self._started_wall,
-            'finished_at': self._finished_wall,
-            'duration': self._finished_mono - self._started_mono
+            'started_at': self._timer.started_at,
+            'finished_at': self._timer.finished_at,
+            'duration': self._timer.duration
         }
 
     def _handle_interrupt(self, logger):
@@ -179,7 +174,7 @@ class Scheduler:
         self._active.clear()
         for name in still_active:
             # remove from graph so completion logic won't wait on them
-            self._dagraph.remove(name)
+            self._graph.remove(name)
             # record cancellation
             self._ran.append(name)
             self._results[name] = {
@@ -209,12 +204,12 @@ class Scheduler:
         except queue.Empty:
             pass
 
-        self._started_wall = time.time()
-        self._started_mono = time.perf_counter()
+        self._timer.start()
+
         meta = {
-            'total_tasks': len(self._run_map),
+            'total_tasks': len(self._callables),
             'workers': self._workers,
-            'started_at': self._started_wall
+            'start_time': self._timer.started_at
         }
         self._callback(self._on_scheduler_start, meta)
 
@@ -224,7 +219,7 @@ class Scheduler:
                 self._executor = executor
                 logger.info(f'starting thread pool with {self._workers} threads')
                 # initial seeding
-                for name in self._dagraph.get_candidates(self._active, self._workers):
+                for name in self._graph.get_candidates(self._active, self._workers):
                     self._submit(name)
 
                 # main loop of scheduler thread
@@ -239,10 +234,8 @@ class Scheduler:
             self._handle_interrupt(logger)
 
         finally:
-            self._finished_wall = time.time()
-            self._finished_mono = time.perf_counter()
-            duration = self._finished_mono - self._started_mono
-            logger.info(f'duration: {duration:.2f}s')
+            self._timer.stop()
+            logger.info(f'duration: {self._timer.duration:.2f}s')
             summary = self._build_summary()
             self._callback(self._on_scheduler_done, summary)
             return summary
@@ -291,7 +284,7 @@ class Scheduler:
         error_type = None
         error = None
         try:
-            self._run_map[name]()
+            self._callables[name]()
         except Exception as exception:
             ok = False
             error_type = type(exception).__name__
