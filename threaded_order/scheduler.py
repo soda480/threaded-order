@@ -16,7 +16,8 @@ class Scheduler:
     """
     max_workers = min(8, os.cpu_count())
 
-    def __init__(self, workers=max_workers, setup_logging=False, add_stream_handler=True):
+    def __init__(self, workers=max_workers, setup_logging=False, add_stream_handler=True,
+                 state=None, store_results=True):
         """ initialize scheduler with thread pool size, logging, and callback placeholders
         """
         # number of concurrent worker threads in the pool
@@ -53,19 +54,26 @@ class Scheduler:
         self._on_scheduler_start = None
         self._on_scheduler_done = None
 
+        # state storage
+        self.state = state if state is not None else {}
+        self._store_results = store_results
+        self.state_lock = threading.RLock()
+        if 'results' not in self.state and store_results:
+            self.state['results'] = {}
+
         self._prefix = 'thread'
         if setup_logging:
             configure_logging(workers, prefix=self._prefix, add_stream_handler=add_stream_handler)
 
-    def register(self, obj, name, after=None):
+    def register(self, obj, name, after=None, with_state=False):
         """ register a callable for execution, optionally dependent on other tasks
         """
         if not callable(obj):
             raise ValueError('object must be callable')
         self._graph.add(name, after=after)
-        self._callables[name] = obj
+        self._callables[name] = (obj, with_state)
 
-    def dregister(self, after=None):
+    def dregister(self, after=None, with_state=False):
         """ decorator form of register() for convenient inline task definition
         """
         def decorator(function):
@@ -73,7 +81,7 @@ class Scheduler:
             def wrapper(*args, **kwargs):
                 return function(*args, **kwargs)
             # register at decoration time so start() can discover it
-            self.register(wrapper, function.__name__, after=after)
+            self.register(wrapper, function.__name__, after=after, with_state=with_state)
             # keep a pointer to the original
             wrapper.__original__ = function
             return wrapper
@@ -197,6 +205,10 @@ class Scheduler:
         self._completed.clear()
         self._futures.clear()
         self._active.clear()
+        # clear stored results
+        if self._store_results and 'results' in self.state:
+            with self.state_lock:
+                self.state['results'].clear()
         # drain any stale events
         try:
             while True:
@@ -294,13 +306,21 @@ class Scheduler:
         self._events.put(('run', payload))
 
         logger.debug(f'run {name!r}')
-        ok = True
+        ok = False
         error_type = None
         error = None
         try:
-            self._callables[name]()
+            function, with_state = self._callables[name]
+            if with_state:
+                result = function(self.state)
+            else:
+                result = function()
+
+            if self._store_results:
+                with self.state_lock:
+                    self.state['results'][name] = result
+            ok = True
         except Exception as exception:
-            ok = False
             error_type = type(exception).__name__
             error = str(exception)
             logger.error(f'{name!r} failed: {error_type}: {error}')
