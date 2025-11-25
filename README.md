@@ -11,7 +11,7 @@ Key Features
 * Dependency graph automatically determines order
 * Simple registration and decorator API
 * Shared thread-safe state: tasks can opt in to receive a shared state dict and read/write values across dependent tasks
-* Automatic result capture: each task’s return value is stored under state["results"][task_name]
+* Automatic result capture: each task’s return value is stored under `state['results'][task_name]`
 * Thread-safe logging, callbacks, and run summary
 * Graceful shutdown on interrupt
 
