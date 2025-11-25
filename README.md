@@ -10,6 +10,8 @@ Key Features
 * Concurrent task execution using Python threads
 * Dependency graph automatically determines order
 * Simple registration and decorator API
+* Shared thread-safe state: tasks can opt in to receive a shared state dict and read/write values across dependent tasks
+* Automatic result capture: each task’s return value is stored under state["results"][task_name]
 * Thread-safe logging, callbacks, and run summary
 * Graceful shutdown on interrupt
 
@@ -60,6 +62,43 @@ if __name__ == '__main__':
 
 ![example4](https://github.com/soda480/threaded-order/blob/main/docs/images/example4.gif?raw=true)
 
+### Shared State Example
+
+```Python
+import json
+from time import sleep
+from threaded_order import Scheduler
+
+s = Scheduler(workers=3, state={})
+
+@s.dregister(with_state=True)
+def load(state):
+    state["x"] = 10; return "loaded"
+
+@s.dregister(with_state=True)
+def behave(state):
+    sleep(3); return "behaved"
+
+@s.dregister(after=["load"], with_state=True)
+def compute(state):
+    state["x"] += 5; return state["x"]
+
+s.start()
+print(json.dumps(s.state, indent=2))
+```
+
+Output:
+```
+{
+  "results": {
+    "load": "loaded",
+    "compute": 15,
+    "behave": "behaved"
+  },
+  "x": 15
+}
+```
+
 ### ProgressBar Integration Example
 
 Can be done by using the `on_task_done` callback. See [example5](https://github.com/soda480/threaded-order/blob/main/examples/example5.py)
@@ -88,6 +127,7 @@ All are optional and run on the scheduler thread (never worker threads).
 | Callback | When Fired | Signature |
 | --- | --- | --- |
 | `on_task_start(fn)`      | Before a task starts | (name) |
+| `on_task_run(fn)`        | When tasks starts running on a thread | (name, thread) |
 | `on_task_done(fn)`       | After a task finishes | (name, ok) |
 | `on_scheduler_start(fn)` | Before scheduler starts running tasks | (meta) |
 | `on_scheduler_done(fn)`  | After all tasks complete | (summary) |
