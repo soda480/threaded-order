@@ -366,3 +366,26 @@ class Scheduler:
         """ register callback fired when the scheduler completes all tasks
         """
         self._on_scheduler_done = (function, args, kwargs)
+
+
+def dmark(*, after=None, with_state=False):
+    """ mark a function for deferred registration by a Scheduler
+        does NOT register anything; only attaches metadata for discovery
+    """
+    deps = list(after) if after else []
+
+    def decorator(function):
+        # preserve wrapper metadata if function is further decorated later
+        @wraps(function)
+        def wrapped(*args, **kwargs):
+            return function(*args, **kwargs)
+
+        # attach metadata to the function object
+        wrapped.__threaded_order__ = {
+            'after': deps,
+            'with_state': with_state,
+            'orig_name': function.__name__,
+        }
+        return wrapped
+
+    return decorator
