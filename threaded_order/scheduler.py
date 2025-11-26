@@ -323,7 +323,7 @@ class Scheduler:
         except Exception as exception:
             error_type = type(exception).__name__
             error = str(exception)
-            logger.error(f'{name!r} failed: {error_type}: {error}')
+            logger.error(f'{function.__name__}: failed: {error_type}: {error}')
         return (name, ok, error_type, error)
 
     def _callback(self, callback, *args):
