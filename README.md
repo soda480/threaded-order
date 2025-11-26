@@ -14,6 +14,7 @@ Key Features
 * Automatic result capture: each task’s return value is stored under `state['results'][task_name]`
 * Thread-safe logging, callbacks, and run summary
 * Graceful shutdown on interrupt
+* `torun` CLI for loading modules, seeding state, and running functions using threaded-order’s dependency-aware scheduler
 
 ## Installation
 
@@ -21,9 +22,97 @@ Key Features
 pip install threaded-order
 ```
 
-### Simple Example
+## API Overview
+`class Scheduler(workers=None, setup_logging=False, add_stream_handler=True)`
+
+Runs registered callables across multiple threads while respecting declared dependencies.
+
+### Core Methods
+| Method | Description |
+| --- | --- |
+| `register(obj, name, after=None)` |	Register a callable for execution. after defines dependencies by name. |
+| `dregister(after=None)` |	Decorator variant of register() for inline task definitions. |
+| `start()` |	Start execution, respecting dependencies. Returns a summary dictionary. |
+
+### Callbacks
+
+All are optional and run on the scheduler thread (never worker threads).
+
+| Callback | When Fired | Signature |
+| --- | --- | --- |
+| `on_task_start(fn)`      | Before a task starts | (name) |
+| `on_task_run(fn)`        | When tasks starts running on a thread | (name, thread) |
+| `on_task_done(fn)`       | After a task finishes | (name, ok) |
+| `on_scheduler_start(fn)` | Before scheduler starts running tasks | (meta) |
+| `on_scheduler_done(fn)`  | After all tasks complete | (summary) |
+
+### Interrupt Handling
+
+Press Ctrl-C during execution to gracefully cancel outstanding work:
+* Running tasks finish naturally or are marked as cancelled
+* Remaining queued tasks are discarded
+* Final summary reflects all results
+
+## CLI Overview (`torun`)
+
+threaded-order provides a command-line runner called `torun`. It loads a Python module, seeds initial state, discovers runnable functions, and executes them using threaded-order’s dependency-aware scheduler.
+
+```bash
+usage: torun [-h] [--workers WORKERS] [--log] [--verbose] target
+
+A threaded-order CLI for dependency-aware, parallel function execution.
+
+positional arguments:
+  target             Python file containing @dmark tasks, optionally with a test selector
+
+options:
+  -h, --help         show this help message and exit
+  --workers WORKERS  Number of worker threads (default: Scheduler default)
+  --log              enable logging output
+  --verbose          enable verbose logging output
+```
+
+### Run all functions in a module:
+
+```bash
+torun path/to/module.py
+```
+This loads the module, calls its optional `setup_state(**kwargs)` function, discovers decorated functions, builds the dependency graph, and runs everything with threaded concurrency.
+
+### Run a single function:
+
+```bash
+torun module.py::test_name
+```
+
+If the selected function normally depends on other tasks, torun ignores those dependencies and runs it standalone. Seed any expected state through the module’s setup function.
+
+### Pass arbitrary key/value pairs to setup
+
+Any argument of the form --key=value is forwarded to setup(**kwargs):
+
+```bash
+torun module.py --env=dev --region=us-west
+```
+
+This allows your module to compute initial state based on CLI parameters.
+
+### Seed mocked results for single-test runs
+
+For functions that depend on upstream results, you can bypass the dependency chain and supply mock values:
+```bash
+torun module.py::test_b --result-test_a=mock_value
+```
+
+## Examples
+
+See examples in examples folder. To run examples, follow instructions below to build and run the Docker container then execute:
+
+### Simple [Example](https://github.com/soda480/threaded-order/blob/main/examples/example4.py)
 
 ![graph](https://github.com/soda480/threaded-order/blob/main/docs/images/graph.png?raw=true)
+
+<details><summary>Code</summary>
 
 ```Python
 from threaded_order import Scheduler, ThreadProxyLogger
@@ -60,9 +149,13 @@ if __name__ == '__main__':
     s.start()
 ```
 
+</details>
+
 ![example4](https://github.com/soda480/threaded-order/blob/main/docs/images/example4.gif?raw=true)
 
-### Shared State Example
+### Shared State [Example](https://github.com/soda480/threaded-order/blob/main/examples/example6.py)
+
+<details><summary>Code</summary>
 
 ```Python
 import json
@@ -87,8 +180,9 @@ s.start()
 print(json.dumps(s.state, indent=2))
 ```
 
-Output:
-```
+</details>
+
+```bash
 {
   "results": {
     "load": "loaded",
@@ -99,45 +193,81 @@ Output:
 }
 ```
 
-### ProgressBar Integration Example
+### ProgressBar Integration [Example](https://github.com/soda480/threaded-order/blob/main/examples/example5.py)
 
 Can be done by using the `on_task_done` callback. See [example5](https://github.com/soda480/threaded-order/blob/main/examples/example5.py)
 
 ![example5](https://github.com/soda480/threaded-order/blob/main/docs/images/example5.gif?raw=true)
 
+### `torun` [Example](https://github.com/soda480/threaded-order/blob/main/examples/example4c.py)
 
-See examples in examples folder. To run examples, follow instructions below to build and run the Docker container then execute:
+<details><summary>Code</summary>
 
-## API Overview
-`class Scheduler(workers=None, setup_logging=False, add_stream_handler=True)`
+```Python
+import time
+import random
+import threading
+from faker import Faker
+from threaded_order import dmark, ThreadProxyLogger
 
-Runs registered callables across multiple threads while respecting declared dependencies.
+logger = ThreadProxyLogger()
 
-### Core Methods
-| Method | Description |
-| --- | --- |
-| `register(obj, name, after=None)` |	Register a callable for execution. after defines dependencies by name. |
-| `dregister(after=None)` |	Decorator variant of register() for inline task definitions. |
-| `start()` |	Start execution, respecting dependencies. Returns a summary dictionary. |
+def setup_state(**kwargs):
+    state = {
+        'faker': Faker(),
+        'faker_lock': threading.RLock(),
+        'results': {},
+    }
+    for key, value in kwargs.items():
+        if key.startswith('result-'):
+            test_name = key[len('result-'):]
+            state['results'][test_name] = value
+        else:
+            state[key] = value
+    return state
 
-### Callbacks
+def run(name, state, deps=None, fail=False):
+    with state['faker_lock']:
+        faker = state['faker']
+        last_name = faker.last_name()
+    sleep = random.uniform(.5, 3.5)
+    logger.debug(f'{name} {last_name} running - sleeping {sleep:.2f}s')
+    time.sleep(sleep)
+    if fail:
+        assert False, 'Intentional Failure'
+    else:
+        results = []
+        for dep in (deps or []):
+            dep_result = state['results'].get(dep, '--no-result--')
+            results.append(f'{name}.{dep_result}')
+        if not results:
+            results.append(name)
+        logger.info(f'{name} passed')
+        return '|'.join(results)
 
-All are optional and run on the scheduler thread (never worker threads).
+@dmark(with_state=True)
+def test_a(state): return run('test_a', state)
 
-| Callback | When Fired | Signature |
-| --- | --- | --- |
-| `on_task_start(fn)`      | Before a task starts | (name) |
-| `on_task_run(fn)`        | When tasks starts running on a thread | (name, thread) |
-| `on_task_done(fn)`       | After a task finishes | (name, ok) |
-| `on_scheduler_start(fn)` | Before scheduler starts running tasks | (meta) |
-| `on_scheduler_done(fn)`  | After all tasks complete | (summary) |
+@dmark(with_state=True, after=['test_a'])
+def test_b(state): return run('test_b', state, deps=['test_a'])
 
-### Interrupt Handling
+@dmark(with_state=True, after=['test_a'])
+def test_c(state): return run('test_c', state, deps=['test_a'])
 
-Press Ctrl-C during execution to gracefully cancel outstanding work:
-* Running tasks finish naturally or are marked as cancelled
-* Remaining queued tasks are discarded
-* Final summary reflects all results
+@dmark(with_state=True, after=['test_c'])
+def test_d(state): return run('test_d', state, deps=['test_c'], fail=True)
+    
+@dmark(with_state=True, after=['test_c'])
+def test_e(state): return run('test_e', state, deps=['test_c'])
+
+@dmark(with_state=True, after=['test_b', 'test_d'])
+def test_f(state): return run('test_f', state, deps=['test_b', 'test_d'])
+```
+
+</details>
+
+![example4c](https://github.com/soda480/threaded-order/blob/main/docs/images/example4c.gif?raw=true)
+
 
 ## Development
 

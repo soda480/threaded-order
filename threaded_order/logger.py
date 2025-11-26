@@ -83,7 +83,7 @@ def configure_logging(workers, prefix='thread', add_stream_handler=False, highli
     file_formatter = logging.Formatter(
         '%(asctime)s %(levelname)-5s [%(threadName)s] %(funcName)s: %(message)s')
 
-    if add_stream_handler:
+    if add_stream_handler or verbose:
         if HAS_COLOR:
             init(autoreset=False)
             stream_formatter = ColoredFormatter(highlights=highlights, verbose=verbose)

@@ -17,7 +17,7 @@ class Scheduler:
     max_workers = min(8, os.cpu_count())
 
     def __init__(self, workers=max_workers, setup_logging=False, add_stream_handler=True,
-                 state=None, store_results=True):
+                 state=None, store_results=True, clear_results_on_start=True, verbose=False):
         """ initialize scheduler with thread pool size, logging, and callback placeholders
         """
         # number of concurrent worker threads in the pool
@@ -57,13 +57,15 @@ class Scheduler:
         # state storage
         self.state = state if state is not None else {}
         self._store_results = store_results
+        self._clear_results_on_start = clear_results_on_start
         self.state_lock = threading.RLock()
         if 'results' not in self.state and store_results:
             self.state['results'] = {}
 
         self._prefix = 'thread'
-        if setup_logging:
-            configure_logging(workers, prefix=self._prefix, add_stream_handler=add_stream_handler)
+        if setup_logging or verbose:
+            configure_logging(workers, prefix=self._prefix, add_stream_handler=add_stream_handler,
+                              verbose=verbose)
 
     def register(self, obj, name, after=None, with_state=False):
         """ register a callable for execution, optionally dependent on other tasks
@@ -206,7 +208,7 @@ class Scheduler:
         self._futures.clear()
         self._active.clear()
         # clear stored results
-        if self._store_results and 'results' in self.state:
+        if self._store_results and self._clear_results_on_start and 'results' in self.state:
             with self.state_lock:
                 self.state['results'].clear()
         # drain any stale events
@@ -253,7 +255,7 @@ class Scheduler:
 
         finally:
             self._timer.stop()
-            logger.info(f'duration: {self._timer.duration:.2f}s')
+            logger.debug(f'duration: {self._timer.duration:.2f}s')
 
             # build and return summary
             summary = self._build_summary()
