@@ -21,6 +21,9 @@ packages = ["threaded_order"]
 [project.urls]
 "Homepage" = "https://github.com/soda480/threaded-order"
 
+[project.scripts]
+torun = "threaded_order.torun:main"
+
 [project.optional-dependencies]
 dev = [
     "build",
