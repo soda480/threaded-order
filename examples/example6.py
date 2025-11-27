@@ -4,14 +4,6 @@ from threaded_order import Scheduler
 
 s = Scheduler(workers=3, state={})
 
-def json_safe_state(state):
-    safe = {}
-    for k, v in state.items():
-        if k == "_state_lock":
-            continue
-        safe[k] = v
-    return safe
-
 @s.dregister(with_state=True)
 def load(state):
     with state['_state_lock']:
@@ -31,4 +23,4 @@ def compute(state):
     state["x"] += 5; return state["x"]
 
 s.start()
-print(json.dumps(json_safe_state(s.state), indent=2))
+print(json.dumps(s.state, indent=2, default=str))

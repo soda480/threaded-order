@@ -36,4 +36,4 @@ def test_f(state): return run('test_f')
 if __name__ == '__main__':
     s.on_scheduler_done(lambda s: print(f"Passed:{len(s['passed'])} Failed:{len(s['failed'])}"))
     s.start()
-    print(json.dumps(s.state, indent=2))
+    print(json.dumps(s.state, indent=2, default=str))
