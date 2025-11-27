@@ -30,7 +30,7 @@ def __getattr__(name):
 try:
     __version__ = _metadata.version(__name__)
 except _metadata.PackageNotFoundError:
-    __version__ = '1.3.7'
+    __version__ = '1.3.8'
 
 if getenv('DEV'):
     __version__ = f'{__version__}+dev'
