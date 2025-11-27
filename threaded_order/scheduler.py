@@ -8,7 +8,7 @@ from functools import wraps
 from .graph import DAGraph
 from .timer import Timer
 from .logger import configure_logging
-from colorama import Fore, Back, Style
+from colorama import Fore, Style
 
 
 class Scheduler:
