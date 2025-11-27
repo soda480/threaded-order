@@ -16,11 +16,13 @@ class Scheduler:
     """
     max_workers = min(8, os.cpu_count())
 
-    def __init__(self, workers=max_workers, setup_logging=False, add_stream_handler=True,
+    def __init__(self, workers=None, setup_logging=False, add_stream_handler=True,
                  state=None, store_results=True, clear_results_on_start=True, verbose=False):
         """ initialize scheduler with thread pool size, logging, and callback placeholders
         """
         # number of concurrent worker threads in the pool
+        if workers is None:
+            workers = self.max_workers
         self._workers = workers
         # task name → callable object to execute
         self._callables = {}
@@ -59,6 +61,7 @@ class Scheduler:
         self._store_results = store_results
         self._clear_results_on_start = clear_results_on_start
         self.state_lock = threading.RLock()
+        self.state.setdefault('_state_lock', self.state_lock)
         if 'results' not in self.state and store_results:
             self.state['results'] = {}
 
