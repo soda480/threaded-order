@@ -13,6 +13,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "colorama"
 ]
 
 [tool.setuptools]
@@ -22,7 +23,7 @@ packages = ["threaded_order"]
 "Homepage" = "https://github.com/soda480/threaded-order"
 
 [project.scripts]
-torun = "threaded_order.torun:main"
+threaded-order = "threaded_order.runner:main"
 
 [project.optional-dependencies]
 dev = [

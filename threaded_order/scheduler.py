@@ -8,6 +8,7 @@ from functools import wraps
 from .graph import DAGraph
 from .timer import Timer
 from .logger import configure_logging
+from colorama import Fore, Style
 
 
 class Scheduler:
@@ -154,7 +155,7 @@ class Scheduler:
         failure_counts = Counter(
             result['error_type'] for result in self._results.values() if not result['ok']
         )
-        return {
+        summary = {
             'ran': ran,
             'passed': passed,
             'failed': failed,
@@ -162,8 +163,11 @@ class Scheduler:
             'failure_counts': dict(failure_counts),
             'started_at': self._timer.started_at,
             'finished_at': self._timer.finished_at,
-            'duration': self._timer.duration
+            'duration': self._timer.duration,
         }
+        text = f"==== {len(passed)} passed, {len(failed)} failed in {summary['duration']:.2f}s ===="
+        summary['text'] = f'{Style.BRIGHT + Fore.BLUE + text + Style.RESET_ALL}'
+        return summary
 
     def _handle_interrupt(self, logger):
         """ cancel in-flight work, drain events, and mark remaining tasks as cancelled

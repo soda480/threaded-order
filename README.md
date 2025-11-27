@@ -14,7 +14,7 @@ Key Features
 * Automatic result capture: each task’s return value is stored under `state['results'][task_name]`
 * Thread-safe logging, callbacks, and run summary
 * Graceful shutdown on interrupt
-* `torun` CLI for loading modules, seeding state, and running functions using threaded-order’s dependency-aware scheduler
+* `threaded-order` CLI for loading modules, seeding state, and running functions using threaded-order’s dependency-aware scheduler
 * Shared state support with a built-in lock for safe cross-thread mutation.
 
 ## Installation
@@ -27,10 +27,10 @@ pip install threaded-order
 ```python
 class Scheduler(
     workers=None, # maximum number of worker threads that can run tasks concurrently.
-    setup_logging=False, # enable built-in logging configuration for scheduler and worker threads.
     state=None, # optional shared dictionary passed to tasks marked with with_state=True
     store_results=True, # automatically save task return values into state["results"]
     clear_results_on_start=True, # wipe state["results"] at the start of each run
+    setup_logging=False, # enable built-in logging configuration for scheduler and worker threads.
     add_stream_handler=True, # attach a stream handler to the logger when logging is enabled.
     verbose=False # enable extra scheduler and task-level debug logging
 ) 
@@ -60,7 +60,7 @@ All are optional and run on the scheduler thread (never worker threads).
 
 ### Shared state `_state_lock`
 
-The scheduler exposes a shared re-entrant lock in state["_state_lock"]. Use this lock only when multiple tasks might write to the same key or mutate the same shared object. For more information refer to [Shared State Guidelines](https://github.com/soda480/threaded-order/blob/main/docs/shared_state.md)
+The scheduler exposes a shared re-entrant lock in `state['_state_lock']`. Use this lock only when multiple tasks might write to the same key or mutate the same shared object. For more information refer to [Shared State Guidelines](https://github.com/soda480/threaded-order/blob/main/docs/shared_state.md)
 
 ### Interrupt Handling
 
@@ -69,12 +69,12 @@ Press Ctrl-C during execution to gracefully cancel outstanding work:
 * Remaining queued tasks are discarded
 * Final summary reflects all results
 
-## CLI Overview (`torun`)
+## CLI Overview
 
-threaded-order provides a command-line runner called `torun`. It loads a Python module, seeds initial state, discovers runnable functions, and executes them using threaded-order’s dependency-aware scheduler.
+threaded-order provides a command-line runner. It loads a Python module, seeds initial state, discovers runnable functions, and executes them using threaded-order’s dependency-aware scheduler.
 
 ```bash
-usage: torun [-h] [--workers WORKERS] [--log] [--verbose] target
+usage: threaded-order [-h] [--workers WORKERS] [--log] [--verbose] target
 
 A threaded-order CLI for dependency-aware, parallel function execution.
 
@@ -91,24 +91,22 @@ options:
 ### Run all functions in a module:
 
 ```bash
-torun path/to/module.py
+threaded-order path/to/module.py
 ```
-This loads the module, calls its optional `setup_state(**kwargs)` function, discovers decorated functions, builds the dependency graph, and runs everything with threaded concurrency.
+This loads the module, calls optional `setup_state` function, discovers decorated functions, builds the dependency graph, and runs everything with threaded concurrency.
 
 ### Run a single function:
-
 ```bash
-torun module.py::test_name
+threaded-order module.py::test_name
 ```
 
-If the selected function normally depends on other tasks, `torun` ignores those dependencies and runs it standalone. Seed any expected state through the module’s `setup_state` function.
+If the selected function normally depends on other tasks, `threaded-order` ignores those dependencies and runs it standalone. Seed any expected state through the module’s `setup_state` function.
 
-### Pass arbitrary key/value pairs to setup
+### Pass arbitrary key/value pairs to `setup_state`
 
-Any argument of the form --key=value is forwarded to setup(**kwargs):
-
+Any argument of the form `--key=value` is added to the initial_state dictionary and passed to `setup_state`:
 ```bash
-torun module.py --env=dev --region=us-west
+threaded-order module.py --env=dev --region=us-west
 ```
 
 This allows your module to compute initial state based on CLI parameters.
@@ -117,7 +115,7 @@ This allows your module to compute initial state based on CLI parameters.
 
 For functions that depend on upstream results, you can bypass the dependency chain and supply mock values:
 ```bash
-torun module.py::test_b --result-test_a=mock_value
+threaded-order module.py::test_b --result-test_a=mock_value
 ```
 
 ## Examples
@@ -180,14 +178,6 @@ from threaded_order import Scheduler
 
 s = Scheduler(workers=3, state={})
 
-def json_safe_state(state):
-    safe = {}
-    for k, v in state.items():
-        if k == "_state_lock":
-            continue
-        safe[k] = v
-    return safe
-
 @s.dregister(with_state=True)
 def load(state):
     with state['_state_lock']:
@@ -207,13 +197,14 @@ def compute(state):
     state["x"] += 5; return state["x"]
 
 s.start()
-print(json.dumps(json_safe_state(s.state), indent=2))
+print(json.dumps(s.state, indent=2, default=str))
 ```
 
 </details>
 
 ```bash
 {
+  "_state_lock": "<unlocked _thread.RLock object owner=0 count=0 at 0x7ac9632852c0>",
   "results": {
     "load": "loaded",
     "compute": 15,
@@ -230,39 +221,28 @@ Can be done by using the `on_task_done` callback. See [example5](https://github.
 
 ![example5](https://github.com/soda480/threaded-order/blob/main/docs/images/example5.gif?raw=true)
 
-### `torun` [Example](https://github.com/soda480/threaded-order/blob/main/examples/example4c.py)
+### `threaded-order` [Example](https://github.com/soda480/threaded-order/blob/main/examples/example4c.py)
 
 <details><summary>Code</summary>
 
 ```Python
 import time
 import random
-import threading
 from faker import Faker
 from threaded_order import dmark, ThreadProxyLogger
 
 logger = ThreadProxyLogger()
 
-def setup_state(**kwargs):
-    state = {
-        'faker': Faker(),
-        'faker_lock': threading.RLock(),
-        'results': {},
-    }
-    for key, value in kwargs.items():
-        if key.startswith('result-'):
-            test_name = key[len('result-'):]
-            state['results'][test_name] = value
-        else:
-            state[key] = value
-    return state
+def setup_state(state):
+    state.update({
+        'faker': Faker()
+    })
 
 def run(name, state, deps=None, fail=False):
-    with state['faker_lock']:
-        faker = state['faker']
-        last_name = faker.last_name()
+    with state['_state_lock']:
+        last_name = state['faker'].last_name()
     sleep = random.uniform(.5, 3.5)
-    logger.debug(f'{name} {last_name} running - sleeping {sleep:.2f}s')
+    logger.debug(f'{name} \"{last_name}\" running - sleeping {sleep:.2f}s')
     time.sleep(sleep)
     if fail:
         assert False, 'Intentional Failure'
@@ -298,7 +278,6 @@ def test_f(state): return run('test_f', state, deps=['test_b', 'test_d'])
 </details>
 
 ![example4c](https://github.com/soda480/threaded-order/blob/main/docs/images/example4c.gif?raw=true)
-
 
 ## Development
 

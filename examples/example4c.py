@@ -1,31 +1,20 @@
 import time
 import random
-import threading
 from faker import Faker
 from threaded_order import dmark, ThreadProxyLogger
 
 logger = ThreadProxyLogger()
 
-def setup_state(**kwargs):
-    state = {
-        'faker': Faker(),
-        'faker_lock': threading.RLock(),
-        'results': {},
-    }
-    for key, value in kwargs.items():
-        if key.startswith('result-'):
-            test_name = key[len('result-'):]
-            state['results'][test_name] = value
-        else:
-            state[key] = value
-    return state
+def setup_state(state):
+    state.update({
+        'faker': Faker()
+    })
 
 def run(name, state, deps=None, fail=False):
-    with state['faker_lock']:
-        faker = state['faker']
-        last_name = faker.last_name()
+    with state['_state_lock']:
+        last_name = state['faker'].last_name()
     sleep = random.uniform(.5, 3.5)
-    logger.debug(f'{name} {last_name} running - sleeping {sleep:.2f}s')
+    logger.debug(f'{name} \"{last_name}\" running - sleeping {sleep:.2f}s')
     time.sleep(sleep)
     if fail:
         assert False, 'Intentional Failure'
