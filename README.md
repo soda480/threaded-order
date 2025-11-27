@@ -15,6 +15,7 @@ Key Features
 * Thread-safe logging, callbacks, and run summary
 * Graceful shutdown on interrupt
 * `torun` CLI for loading modules, seeding state, and running functions using threaded-order’s dependency-aware scheduler
+* Shared state support with a built-in lock for safe cross-thread mutation.
 
 ## Installation
 
@@ -23,16 +24,27 @@ pip install threaded-order
 ```
 
 ## API Overview
-`class Scheduler(workers=None, setup_logging=False, add_stream_handler=True)`
+```python
+class Scheduler(
+    workers=None, # maximum number of worker threads that can run tasks concurrently.
+    setup_logging=False, # enable built-in logging configuration for scheduler and worker threads.
+    state=None, # optional shared dictionary passed to tasks marked with with_state=True
+    store_results=True, # automatically save task return values into state["results"]
+    clear_results_on_start=True, # wipe state["results"] at the start of each run
+    add_stream_handler=True, # attach a stream handler to the logger when logging is enabled.
+    verbose=False # enable extra scheduler and task-level debug logging
+) 
+```
 
 Runs registered callables across multiple threads while respecting declared dependencies.
 
 ### Core Methods
 | Method | Description |
 | --- | --- |
-| `register(obj, name, after=None)` |	Register a callable for execution. after defines dependencies by name. |
-| `dregister(after=None)` |	Decorator variant of register() for inline task definitions. |
-| `start()` |	Start execution, respecting dependencies. Returns a summary dictionary. |
+| `register(obj, name, after=None, with_state=False)` |	Register a callable for execution. after defines dependencies by name, specify if function is to receive the shared state. |
+| `dregister(after=None, with_state=False)` | Decorator variant of register() for inline task definitions. |
+| `start()` | Start execution, respecting dependencies. Returns a summary dictionary. |
+| `dmark(after=None, with_state=False)` | Decorator that marks a function for deferred registration by the scheduler, allowing you to declare dependencies (after) and whether the function should receive the shared state (with_state). |
 
 ### Callbacks
 
@@ -45,6 +57,10 @@ All are optional and run on the scheduler thread (never worker threads).
 | `on_task_done(fn)`       | After a task finishes | (name, ok) |
 | `on_scheduler_start(fn)` | Before scheduler starts running tasks | (meta) |
 | `on_scheduler_done(fn)`  | After all tasks complete | (summary) |
+
+### Shared state `_state_lock`
+
+The scheduler exposes a shared re-entrant lock in state["_state_lock"]. Use this lock only when multiple tasks might write to the same key or mutate the same shared object. For more information refer to [Shared State Guidelines](https://github.com/soda480/threaded-order/blob/main/docs/shared_state.md)
 
 ### Interrupt Handling
 
@@ -85,7 +101,7 @@ This loads the module, calls its optional `setup_state(**kwargs)` function, disc
 torun module.py::test_name
 ```
 
-If the selected function normally depends on other tasks, torun ignores those dependencies and runs it standalone. Seed any expected state through the module’s setup function.
+If the selected function normally depends on other tasks, `torun` ignores those dependencies and runs it standalone. Seed any expected state through the module’s `setup_state` function.
 
 ### Pass arbitrary key/value pairs to setup
 
@@ -164,20 +180,34 @@ from threaded_order import Scheduler
 
 s = Scheduler(workers=3, state={})
 
+def json_safe_state(state):
+    safe = {}
+    for k, v in state.items():
+        if k == "_state_lock":
+            continue
+        safe[k] = v
+    return safe
+
 @s.dregister(with_state=True)
 def load(state):
+    with state['_state_lock']:
+        state['counter'] = state.get('counter', 0) + 1
     state["x"] = 10; return "loaded"
 
 @s.dregister(with_state=True)
 def behave(state):
+    with state['_state_lock']:
+        state['counter'] = state.get('counter', 0) + 1
     sleep(3); return "behaved"
 
 @s.dregister(after=["load"], with_state=True)
 def compute(state):
+    with state['_state_lock']:
+        state['counter'] = state.get('counter', 0) + 1
     state["x"] += 5; return state["x"]
 
 s.start()
-print(json.dumps(s.state, indent=2))
+print(json.dumps(json_safe_state(s.state), indent=2))
 ```
 
 </details>
@@ -189,6 +219,7 @@ print(json.dumps(s.state, indent=2))
     "compute": 15,
     "behave": "behaved"
   },
+  "counter": 3,
   "x": 15
 }
 ```

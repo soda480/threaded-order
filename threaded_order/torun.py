@@ -20,7 +20,7 @@ def get_parser():
     parser.add_argument(
         '--workers',
         type=int,
-        default=3,
+        default=None,
         help='Number of worker threads (default: Scheduler default)')
     parser.add_argument(
         '--log',
@@ -96,7 +96,7 @@ def _main(argv=None):
         initial_state = setup_state_function(**setup_kwargs)
 
     scheduler_kwargs = {
-        'workers': args.workers,
+        'workers': args.workers if args.workers else None,
         'setup_logging': args.log,
         'clear_results_on_start': clear_results_on_start,
         'verbose': args.verbose,
