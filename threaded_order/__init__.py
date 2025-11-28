@@ -7,6 +7,7 @@ __all__ = [
     'configure_logging',
     'ThreadProxyLogger',
     'dmark',
+    'tag'
     '__version__']
 
 def __getattr__(name):
@@ -25,12 +26,15 @@ def __getattr__(name):
     if name == 'dmark':
         from .scheduler import dmark
         return dmark
+    if name == 'tag':
+        from .scheduler import tag
+        return tag
     raise AttributeError(name)
 
 try:
     __version__ = _metadata.version(__name__)
 except _metadata.PackageNotFoundError:
-    __version__ = '1.3.8'
+    __version__ = '1.4.0'
 
 if getenv('DEV'):
     __version__ = f'{__version__}+dev'
