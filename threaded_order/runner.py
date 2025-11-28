@@ -12,16 +12,21 @@ def get_parser():
     """ return argument parser
     """
     parser = argparse.ArgumentParser(
-        prog='torun',
+        prog='mtrun',
         description='A threaded-order CLI for dependency-aware, parallel function execution.')
     parser.add_argument(
         'target',
-        help='Python file containing @dmark tasks, optionally with a test selector')
+        help='Python file containing @dmark functions')
     parser.add_argument(
         '--workers',
         type=int,
         default=None,
         help='Number of worker threads (default: Scheduler default)')
+    parser.add_argument(
+        '--tags',
+        type=str,
+        default=None,
+        help='Comma-separated list of tags to filter functions by')
     parser.add_argument(
         '--log',
         action='store_true',
@@ -71,14 +76,18 @@ def load_module(path):
     spec.loader.exec_module(module)
     return module
 
-def collect_dmarked_functions(module):
+def collect_functions(module, tags_filter=None):
     """ return (name, function, meta) for all functions marked by @dmark.
     """
     functions = []
     for name, function in inspect.getmembers(module, inspect.isfunction):
         meta = getattr(function, '__threaded_order__', None)
+        tags = getattr(function, '__threaded_order_tags__', None)
         if meta is None:
             continue
+        if tags_filter is not None:
+            if not any(t in tags for t in tags_filter):
+                continue
         functions.append((name, function, meta))
     return functions
 
@@ -104,15 +113,20 @@ def _main(argv=None):
         setup_logging=args.log,
         verbose=args.verbose)
 
-    marked_functions = collect_dmarked_functions(module)
+    tags_filter = args.tags.split(',') if args.tags else None
+    marked_functions = collect_functions(module, tags_filter=tags_filter)
     if not marked_functions:
-        raise SystemExit(f'No @dmark functions found in {module_path}')
+        raise SystemExit(
+            f'No @dmark functions found in {module_path}'
+            'or no functions match the given tags filter')
 
     if function_name is not None:
         filtered = [f for f in marked_functions if f[0] == function_name]
         if not filtered:
             raise SystemExit(
-                f"function '{function_name}' not found or not marked with @dmark in {module_path}")
+                f"function '{function_name}' not found or "
+                f"not marked with @dmark in {module_path} or "
+                "does not match the given tags filter")
         marked_functions = filtered
     single_function_mode = function_name is not None
 
@@ -122,6 +136,12 @@ def _main(argv=None):
         if single_function_mode and after:
             # break dependency edges so Scheduler doesn't complain
             after = []
+
+        # if tags filtering is active, ensure dependencies are still present
+        # exclude dependencies that are missing due to tag filtering
+        if tags_filter and after:
+            after = [d for d in after if d in {f[0] for f in marked_functions}]
+
         scheduler.register(function, name=name, after=after, with_state=with_state)
 
     def on_done(summary):

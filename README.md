@@ -2,20 +2,17 @@
 [![PyPI version](https://badge.fury.io/py/threaded-order.svg)](https://badge.fury.io/py/threaded-order)
 
 # threaded-order
-A lightweight Python framework for running functions concurrently across multiple threads while maintaining defined execution order. It lets you declare dependencies between tasks—so some run only after others complete—without complex orchestration code. 
+A lightweight Python framework for running functions across multiple threads while enforcing dependency-defined execution order. You declare task dependencies, and the scheduler handles both sequencing and concurrency.
 
-Ideal for dependency-aware test execution, build pipelines, and automation workflows that benefit from controlled concurrency.
+Great for dependency-aware test runs, build pipelines, and automation flows that need structure without giving up speed.
 
 Key Features
-* Concurrent task execution using Python threads
-* Dependency graph automatically determines order
-* Simple registration and decorator API
-* Shared thread-safe state: tasks can opt in to receive a shared state dict and read/write values across dependent tasks
-* Automatic result capture: each task’s return value is stored under `state['results'][task_name]`
-* Thread-safe logging, callbacks, and run summary
+* Concurrent execution using Python threads, coordinated by a dependency graph
+* Simple registration and decorator-based API
+* Shared, thread-safe state (opt-in) with a built-in lock for safe cross-thread mutation
+* Thread-safe logging, callbacks, and run summaries
 * Graceful shutdown on interrupt
-* `threaded-order` CLI for loading modules, seeding state, and running functions using threaded-order’s dependency-aware scheduler
-* Shared state support with a built-in lock for safe cross-thread mutation.
+* A CLI runner that uses threaded-order’s DAG engine to run tests in parallel while preserving deterministic, dependency-aware ordering
 
 ## Installation
 
@@ -71,19 +68,30 @@ Press Ctrl-C during execution to gracefully cancel outstanding work:
 
 ## CLI Overview
 
-threaded-order provides a command-line runner. It loads a Python module, seeds initial state, discovers runnable functions, and executes them using threaded-order’s dependency-aware scheduler.
+A multi-threaded test runner built on top of the threaded-order framework. It uses the dependency DAG to understand relationships between tests and the Scheduler to coordinate safe parallel execution.
+
+Tests that can run together are dispatched across multiple threads, while dependency-bound tests wait for their upstream tasks to complete. This delivers high concurrency without losing deterministic behavior or correctness.
+
+You get:
+* Multi-threaded execution handled by the Scheduler
+* Deterministic ordering driven by the DAG
+* Simple decorator-based test registration
+* Clean pass/fail reporting
+* Scales well with large or deep dependency graphs
+* Ability to filter execution using tags
 
 ```bash
-usage: threaded-order [-h] [--workers WORKERS] [--log] [--verbose] target
+usage: mtrun [-h] [--workers WORKERS] [--tags TAGS] [--log] [--verbose] target
 
 A threaded-order CLI for dependency-aware, parallel function execution.
 
 positional arguments:
-  target             Python file containing @dmark tasks, optionally with a test selector
+  target             Python file containing @dmark functions
 
 options:
   -h, --help         show this help message and exit
   --workers WORKERS  Number of worker threads (default: Scheduler default)
+  --tags TAGS        Comma-separated list of tags to filter functions by
   --log              enable logging output
   --verbose          enable verbose logging output
 ```
@@ -91,22 +99,22 @@ options:
 ### Run all functions in a module:
 
 ```bash
-threaded-order path/to/module.py
+mtrun path/to/module.py
 ```
 This loads the module, calls optional `setup_state` function, discovers decorated functions, builds the dependency graph, and runs everything with threaded concurrency.
 
 ### Run a single function:
 ```bash
-threaded-order module.py::test_name
+mtrun module.py::function_name
 ```
 
-If the selected function normally depends on other tasks, `threaded-order` ignores those dependencies and runs it standalone. Seed any expected state through the module’s `setup_state` function.
+If the selected function normally depends on other tasks, ignores those dependencies and runs it standalone. Seed any expected state through the module’s `setup_state` function.
 
 ### Pass arbitrary key/value pairs to `setup_state`
 
 Any argument of the form `--key=value` is added to the initial_state dictionary and passed to `setup_state`:
 ```bash
-threaded-order module.py --env=dev --region=us-west
+mtrun module.py --env=dev --region=us-west
 ```
 
 This allows your module to compute initial state based on CLI parameters.
@@ -115,7 +123,7 @@ This allows your module to compute initial state based on CLI parameters.
 
 For functions that depend on upstream results, you can bypass the dependency chain and supply mock values:
 ```bash
-threaded-order module.py::test_b --result-test_a=mock_value
+mtrun module.py::test_b --result-test_a=mock_value
 ```
 
 ## Examples
@@ -221,7 +229,7 @@ Can be done by using the `on_task_done` callback. See [example5](https://github.
 
 ![example5](https://github.com/soda480/threaded-order/blob/main/docs/images/example5.gif?raw=true)
 
-### `threaded-order` [Example](https://github.com/soda480/threaded-order/blob/main/examples/example4c.py)
+### `mtrun` [Example](https://github.com/soda480/threaded-order/blob/main/examples/example4c.py)
 
 <details><summary>Code</summary>
 
@@ -278,6 +286,72 @@ def test_f(state): return run('test_f', state, deps=['test_b', 'test_d'])
 </details>
 
 ![example4c](https://github.com/soda480/threaded-order/blob/main/docs/images/example4c.gif?raw=true)
+
+
+### `mtrun` tag filtering [Example](https://github.com/soda480/threaded-order/blob/main/examples/example7.py)
+
+<details><summary>Code</summary>
+
+```Python
+import time
+import random
+from faker import Faker
+from threaded_order import dmark, tag, ThreadProxyLogger
+
+logger = ThreadProxyLogger()
+
+def setup_state(state):
+    state.update({
+        'faker': Faker()
+    })
+
+def run(name, state, deps=None, fail=False):
+    with state['_state_lock']:
+        last_name = state['faker'].last_name()
+    sleep = random.uniform(.5, 3.5)
+    logger.debug(f'{name} \"{last_name}\" running - sleeping {sleep:.2f}s')
+    time.sleep(sleep)
+    if fail:
+        assert False, 'Intentional Failure'
+    else:
+        results = []
+        for dep in (deps or []):
+            dep_result = state.get(dep, '--no-result--')
+            results.append(f'{name}.{dep_result}')
+        if not results:
+            results.append(name)
+        logger.info(f'{name} passed')
+        state[name] = '|'.join(results)
+
+@tag('layer1')
+@dmark(with_state=True)
+def test_a(state): return run('test_a', state)
+
+@tag('layer2')
+@dmark(with_state=True, after=['test_a'])
+def test_b(state): return run('test_b', state, deps=['test_a'])
+
+@tag('layer2')
+@dmark(with_state=True, after=['test_a'])
+def test_c(state): return run('test_c', state, deps=['test_a'])
+
+@tag('layer3')
+@dmark(with_state=True, after=['test_c'])
+def test_d(state): return run('test_d', state, deps=['test_c'], fail=True)
+    
+@tag('layer3')
+@dmark(with_state=True, after=['test_c'])
+def test_e(state): return run('test_e', state, deps=['test_c'])
+
+@tag('layer4')
+@dmark(with_state=True, after=['test_b', 'test_d'])
+def test_f(state): return run('test_f', state, deps=['test_b', 'test_d'])
+```
+
+</details>
+
+![example7](https://github.com/soda480/threaded-order/blob/main/docs/images/example7.gif?raw=true)
+
 
 ## Development
 
