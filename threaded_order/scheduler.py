@@ -377,7 +377,7 @@ class Scheduler:
         self._on_scheduler_done = (function, args, kwargs)
 
 
-def dmark(*, after=None, with_state=False):
+def dmark(*, after=None, with_state=False, tag=None):
     """ mark a function for deferred registration by a Scheduler
         does NOT register anything; only attaches metadata for discovery
     """
@@ -394,24 +394,8 @@ def dmark(*, after=None, with_state=False):
             'after': deps,
             'with_state': with_state,
             'orig_name': function.__name__,
+            'tag': tag,
         }
-        return wrapped
-
-    return decorator
-
-def tag(*tags):
-    """ mark a function with one or more tags for later selection
-    """
-    def decorator(function):
-        # preserve wrapper metadata if function is further decorated later
-        @wraps(function)
-        def wrapped(*args, **kwargs):
-            return function(*args, **kwargs)
-
-        # attach tags to the function object
-        existing = getattr(function, '__threaded_order_tags__', set())
-        updated = existing.union(set(tags))
-        wrapped.__threaded_order_tags__ = updated
         return wrapped
 
     return decorator

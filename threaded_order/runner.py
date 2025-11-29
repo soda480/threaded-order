@@ -82,11 +82,11 @@ def collect_functions(module, tags_filter=None):
     functions = []
     for name, function in inspect.getmembers(module, inspect.isfunction):
         meta = getattr(function, '__threaded_order__', None)
-        tags = getattr(function, '__threaded_order_tags__', None)
         if meta is None:
             continue
         if tags_filter is not None:
-            if not any(t in tags for t in tags_filter):
+            tag = meta.get('tag')
+            if tag not in tags_filter:
                 continue
         functions.append((name, function, meta))
     return functions
@@ -137,7 +137,7 @@ def _main(argv=None):
             # break dependency edges so Scheduler doesn't complain
             after = []
 
-        # if tags filtering is active, ensure dependencies are still present
+        # if tag filtering is active, ensure dependencies are still present
         # exclude dependencies that are missing due to tag filtering
         if tags_filter and after:
             after = [d for d in after if d in {f[0] for f in marked_functions}]
