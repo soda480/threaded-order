@@ -41,7 +41,7 @@ Runs registered callables across multiple threads while respecting declared depe
 | `register(obj, name, after=None, with_state=False)` |	Register a callable for execution. after defines dependencies by name, specify if function is to receive the shared state. |
 | `dregister(after=None, with_state=False)` | Decorator variant of register() for inline task definitions. |
 | `start()` | Start execution, respecting dependencies. Returns a summary dictionary. |
-| `dmark(after=None, with_state=False)` | Decorator that marks a function for deferred registration by the scheduler, allowing you to declare dependencies (after) and whether the function should receive the shared state (with_state). |
+| `dmark(after=None, with_state=False, tag=None)` | Decorator that marks a function for deferred registration by the scheduler, allowing you to declare dependencies (after) and whether the function should receive the shared state (with_state), and optionally tag the function (tag) for execution filtering. |
 
 ### Callbacks
 
