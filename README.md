@@ -2,17 +2,36 @@
 [![PyPI version](https://badge.fury.io/py/threaded-order.svg)](https://badge.fury.io/py/threaded-order)
 
 # threaded-order
-A lightweight Python framework for running functions across multiple threads while enforcing dependency-defined execution order. You declare task dependencies, and the scheduler handles both sequencing and concurrency.
+`threaded-order` is a lightweight Python framework for running functions in parallel while honoring explicit dependency order.
+You declare dependencies; the scheduler handles sequencing, concurrency, and correctness.
 
-Great for dependency-aware test runs, build pipelines, and automation flows that need structure without giving up speed.
+Great for dependency-aware test runs, build steps, pipelines, and automation flows that need structure without giving up speed.
 
-Key Features
-* Concurrent execution using Python threads, coordinated by a dependency graph
-* Simple registration and decorator-based API
-* Shared, thread-safe state (opt-in) with a built-in lock for safe cross-thread mutation
-* Thread-safe logging, callbacks, and run summaries
-* Graceful shutdown on interrupt
-* A CLI runner that uses threaded-order’s DAG engine to run tests in parallel while preserving deterministic, dependency-aware ordering
+## Why threaded-order?
+
+Use it when you want:
+* Parallel execution with strict upstream → downstream ordering
+* A simple, declarative way to express dependencies (`after=['a', 'b']`)
+* Deterministic behavior even under concurrency
+* A DAG-driven execution model without heavyweight tooling
+* A clean decorator-based API for organizing tasks
+* A CLI (`tdrun`) for running functions as parallel tests
+
+## Key Features
+* Parallel execution using Python threads backed by a dependency DAG
+* Deterministic ordering based on `after=[...]` relationships
+* Decorator-based API (`@dmark`, `@dregister`) for clean task definitions
+* Shared state (opt-in) with a thread-safe, built-in lock
+* Thread-safe logging via `ThreadProxyLogger`
+* Graceful interrupt handling and clear run summaries
+* CLI: `tdrun` — dependency-aware test runner with tag filtering
+* DAG visualization — inspect your dependency graph with --graph
+* Simple, extensible design — no external dependencies
+
+### About the DAG
+
+threaded-order schedules work using a Directed Acyclic Graph (DAG) — this structure defines which tasks must run before others.  
+If you’re new to DAGs or want a quick refresher, this short primer is helpful: https://en.wikipedia.org/wiki/Directed_acyclic_graph
 
 ## Installation
 
@@ -23,14 +42,14 @@ pip install threaded-order
 ## API Overview
 ```python
 class Scheduler(
-    workers=None, # maximum number of worker threads that can run tasks concurrently.
-    state=None, # optional shared dictionary passed to tasks marked with with_state=True
-    store_results=True, # automatically save task return values into state["results"]
-    clear_results_on_start=True, # wipe state["results"] at the start of each run
-    setup_logging=False, # enable built-in logging configuration for scheduler and worker threads.
-    add_stream_handler=True, # attach a stream handler to the logger when logging is enabled.
-    verbose=False # enable extra scheduler and task-level debug logging
-) 
+    workers=None,                 # max number of worker threads
+    state=None,                   # shared state dict passed to @dmark functions
+    store_results=True,           # save return values into state["results"]
+    clear_results_on_start=True,  # wipe previous results
+    setup_logging=False,          # enable built-in logging config
+    add_stream_handler=True,      # attach stream handler to logger
+    verbose=False                 # enable extra debug logging
+)
 ```
 
 Runs registered callables across multiple threads while respecting declared dependencies.
@@ -55,9 +74,12 @@ All are optional and run on the scheduler thread (never worker threads).
 | `on_scheduler_start(fn)` | Before scheduler starts running tasks | (meta) |
 | `on_scheduler_done(fn)`  | After all tasks complete | (summary) |
 
-### Shared state `_state_lock`
+### Shared state and `_state_lock`
 
-The scheduler exposes a shared re-entrant lock in `state['_state_lock']`. Use this lock only when multiple tasks might write to the same key or mutate the same shared object. For more information refer to [Shared State Guidelines](https://github.com/soda480/threaded-order/blob/main/docs/shared_state.md)
+If `with_state=True`, tasks receive the shared state dict.
+Threaded-order inserts a re-entrant lock at state['_state_lock'] you can use when modifying shared values.
+
+For more information refer to [Shared State Guidelines](https://github.com/soda480/threaded-order/blob/main/docs/shared_state.md)
 
 ### Interrupt Handling
 
@@ -66,22 +88,24 @@ Press Ctrl-C during execution to gracefully cancel outstanding work:
 * Remaining queued tasks are discarded
 * Final summary reflects all results
 
-## CLI Overview
+## CLI Overview (`tdrun`)
 
-A multi-threaded test runner built on top of the threaded-order framework. It uses the dependency DAG to understand relationships between tests and the Scheduler to coordinate safe parallel execution.
+`tdrun` is a DAG-aware, parallel test runner built on top of the threaded-order scheduler.
 
-Tests that can run together are dispatched across multiple threads, while dependency-bound tests wait for their upstream tasks to complete. This delivers high concurrency without losing deterministic behavior or correctness.
+It discovers `@dmark` functions inside a module, builds a dependency graph, and executes everything in parallel while preserving deterministic order.
 
 You get:
-* Multi-threaded execution handled by the Scheduler
-* Deterministic ordering driven by the DAG
-* Simple decorator-based test registration
-* Clean pass/fail reporting
-* Scales well with large or deep dependency graphs
-* Ability to filter execution using tags
+* Parallel execution based on the Scheduler
+* Predictable, DAG-driven ordering
+* Tag filtering (`--tags=tag1,tag2`)
+* Arbitrary state injection via `--key=value`
+* Mock upstream results for single-function runs
+* Graph inspection (`--graph`) to validate ordering and parallelism
+* Clean pass/fail summary
 
+### CLI Usage
 ```bash
-usage: mtrun [-h] [--workers WORKERS] [--tags TAGS] [--log] [--verbose] target
+usage: tdrun [-h] [--workers WORKERS] [--tags TAGS] [--log] [--verbose] [--graph] target
 
 A threaded-order CLI for dependency-aware, parallel function execution.
 
@@ -94,43 +118,71 @@ options:
   --tags TAGS        Comma-separated list of tags to filter functions by
   --log              enable logging output
   --verbose          enable verbose logging output
+  --graph            show dependency graph and exit
 ```
 
-### Run all functions in a module:
+### Run all marked functions in a module:
 
 ```bash
-mtrun path/to/module.py
+tdrun path/to/module.py
 ```
-This loads the module, calls optional `setup_state` function, discovers decorated functions, builds the dependency graph, and runs everything with threaded concurrency.
 
 ### Run a single function:
 ```bash
-mtrun module.py::function_name
+tdrun module.py::test_b
 ```
 
-If the selected function normally depends on other tasks, ignores those dependencies and runs it standalone. Seed any expected state through the module’s `setup_state` function.
+This isolates the function and ignores its upstream dependencies.
 
-### Pass arbitrary key/value pairs to `setup_state`
-
-Any argument of the form `--key=value` is added to the initial_state dictionary and passed to `setup_state`:
+You can provide mocked results:
 ```bash
-mtrun module.py --env=dev --region=us-west
+tdrun module.py::test_b --result-test_a=mock_value
 ```
+
+### Inject arbitrary state parameters
+```bash
+tdrun module.py --env=dev --region=us-west
+```
+These appear in `initial_state` and can be processed in your module’s `setup_state(state)`.
 
 This allows your module to compute initial state based on CLI parameters.
 
-### Seed mocked results for single-test runs
+### DAG Inspection
 
-For functions that depend on upstream results, you can bypass the dependency chain and supply mock values:
+Use graph-only mode to inspect dependency structure:
 ```bash
-mtrun module.py::test_b --result-test_a=mock_value
+tdrun examples/example4c.py --graph
+```
+
+Example output:
+```bash
+Graph: 6 nodes, 6 edges
+Roots: [0]
+Leaves: [4], [5]
+Levels: 4
+
+Nodes:
+  [0] test_a
+  [1] test_b
+  [2] test_c
+  [3] test_d
+  [4] test_e
+  [5] test_f
+
+Edges:
+  [0] -> [1], [2]
+  [1] -> [5]
+  [2] -> [3], [4]
+  [3] -> [5]
+  [4] -> (none)
+  [5] -> (none)
 ```
 
 ## Examples
 
-See examples in examples folder. To run examples, follow instructions below to build and run the Docker container then execute:
+See the examples/ folder for runnable demos.
 
-### Simple [Example](https://github.com/soda480/threaded-order/blob/main/examples/example4.py)
+### Basic usagge [Example](https://github.com/soda480/threaded-order/blob/main/examples/example4.py)
 
 ![graph](https://github.com/soda480/threaded-order/blob/main/docs/images/graph.png?raw=true)
 
@@ -223,13 +275,7 @@ print(json.dumps(s.state, indent=2, default=str))
 }
 ```
 
-### ProgressBar Integration [Example](https://github.com/soda480/threaded-order/blob/main/examples/example5.py)
-
-Can be done by using the `on_task_done` callback. See [example5](https://github.com/soda480/threaded-order/blob/main/examples/example5.py)
-
-![example5](https://github.com/soda480/threaded-order/blob/main/docs/images/example5.gif?raw=true)
-
-### `mtrun` [Example](https://github.com/soda480/threaded-order/blob/main/examples/example4c.py)
+### `tdrun` [Example](https://github.com/soda480/threaded-order/blob/main/examples/example4c.py)
 
 <details><summary>Code</summary>
 
@@ -288,7 +334,7 @@ def test_f(state): return run('test_f', state, deps=['test_b', 'test_d'])
 ![example4c](https://github.com/soda480/threaded-order/blob/main/docs/images/example4c.gif?raw=true)
 
 
-### `mtrun` tag filtering [Example](https://github.com/soda480/threaded-order/blob/main/examples/example7.py)
+### `tdrun` tag filtering [Example](https://github.com/soda480/threaded-order/blob/main/examples/example7.py)
 
 <details><summary>Code</summary>
 
@@ -345,6 +391,13 @@ def test_f(state): return run('test_f', state, deps=['test_b', 'test_d'])
 </details>
 
 ![example7](https://github.com/soda480/threaded-order/blob/main/docs/images/example7.gif?raw=true)
+
+
+### ProgressBar Integration [Example](https://github.com/soda480/threaded-order/blob/main/examples/example5.py)
+
+Can be done by using the `on_task_done` callback. See [example5](https://github.com/soda480/threaded-order/blob/main/examples/example5.py)
+
+![example5](https://github.com/soda480/threaded-order/blob/main/docs/images/example5.gif?raw=true)
 
 
 ## Development

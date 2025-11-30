@@ -117,3 +117,18 @@ class DAGraph:
         children = '\n'.join(
             f'{n}: {sorted(list(self._children[n]))}' for n in sorted(self._children))
         return f'Parents:\n{parents}\nChildren:\n{children}'
+
+    def nodes(self):
+        """ return an iterable of node names in the graph
+        """
+        return self._parents.keys()
+
+    def parents_of(self, name):
+        """ return a list of parent nodes (dependencies) for a given node
+        """
+        return list(self._parents.get(name, []))
+
+    def children_of(self, name):
+        """ return a list of child nodes (dependents) for a given node
+        """
+        return list(self._children.get(name, []))

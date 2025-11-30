@@ -23,7 +23,7 @@ packages = ["threaded_order"]
 "Homepage" = "https://github.com/soda480/threaded-order"
 
 [project.scripts]
-mtrun = "threaded_order.runner:main"
+tdrun = "threaded_order.runner:main"
 
 [project.optional-dependencies]
 dev = [
