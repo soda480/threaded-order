@@ -5,6 +5,8 @@ import importlib.util
 import inspect
 from pathlib import Path
 from threaded_order import Scheduler, ThreadProxyLogger
+from threaded_order.graph_summary import format_graph_summary
+
 
 logger = ThreadProxyLogger()
 
@@ -12,7 +14,7 @@ def get_parser():
     """ return argument parser
     """
     parser = argparse.ArgumentParser(
-        prog='mtrun',
+        prog='tdrun',
         description='A threaded-order CLI for dependency-aware, parallel function execution.')
     parser.add_argument(
         'target',
@@ -35,6 +37,10 @@ def get_parser():
         '--verbose',
         action='store_true',
         help='enable verbose logging output')
+    parser.add_argument(
+        '--graph',
+        action='store_true',
+        help='show dependency graph and exit')
     return parser
 
 def get_initial_state(unknown_args):
@@ -143,6 +149,10 @@ def _main(argv=None):
             after = [d for d in after if d in {f[0] for f in marked_functions}]
 
         scheduler.register(function, name=name, after=after, with_state=with_state)
+
+    if args.graph:
+        print(format_graph_summary(scheduler.graph))
+        return
 
     def on_done(summary):
         print(summary['text'])

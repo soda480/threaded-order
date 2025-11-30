@@ -376,6 +376,12 @@ class Scheduler:
         """
         self._on_scheduler_done = (function, args, kwargs)
 
+    @property
+    def graph(self):
+        """ return the underlying dependency graph (read-only)
+        """
+        return self._graph
+
 
 def dmark(*, after=None, with_state=False, tag=None):
     """ mark a function for deferred registration by a Scheduler
