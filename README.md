@@ -103,7 +103,7 @@ You get:
 * Graph inspection (`--graph`) to validate ordering and parallelism
 * Clean pass/fail summary
 
-### CLI Usage
+### CLI usage
 ```bash
 usage: tdrun [-h] [--workers WORKERS] [--tags TAGS] [--log] [--verbose] [--graph] target
 
@@ -176,13 +176,23 @@ Edges:
   [3] -> [5]
   [4] -> (none)
   [5] -> (none)
+
+Stats:
+  Longest chain length (edges): 3
+  Longest chains:
+    test_a -> test_c -> test_d -> test_f
+  High fan-in nodes (many dependencies):
+    test_f (indegree=2)
+  High fan-out nodes (many dependents):
+    test_a (children=2)
+    test_c (children=2)
 ```
 
 ## Examples
 
 See the examples/ folder for runnable demos.
 
-### Basic usagge [Example](https://github.com/soda480/threaded-order/blob/main/examples/example4.py)
+### Basic usage [Example](https://github.com/soda480/threaded-order/blob/main/examples/example4.py)
 
 ![graph](https://github.com/soda480/threaded-order/blob/main/docs/images/graph.png?raw=true)
 

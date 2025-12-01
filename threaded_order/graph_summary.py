@@ -151,6 +151,95 @@ def _graph_format_edges(nodes, adj, ids):
         lines.append(f'  [{ids[name]}] -> {targets}')
     return lines
 
+def _graph_compute_longest_chains(nodes, levels, adj):
+    """ compute the longest dependency chains in the DAG.
+
+    Uses the topological levels to derive a topo order, then computes the
+    longest distance (in edges) from any root to each node.
+
+    Returns:
+        max_len: int, length in edges of the longest chain
+        chains: list of chains, each a [node, node, ...] list
+    """
+    if not nodes:
+        return 0, []
+
+    topo_order = []
+    for level in levels:
+        for name in level:
+            topo_order.append(name)
+
+    dist = {name: 0 for name in nodes}
+    prev = {name: None for name in nodes}
+
+    for src in topo_order:
+        for dst in adj[src]:
+            cand = dist[src] + 1
+            if cand > dist[dst]:
+                dist[dst] = cand
+                prev[dst] = src
+
+    if not dist:
+        return 0, []
+
+    max_len = max(dist.values())
+    if max_len == 0:
+        # no edges; treat single nodes as trivial chains
+        return 0, [[nodes[0]]] if nodes else []
+
+    end_nodes = [name for name, d in dist.items() if d == max_len]
+
+    chains = []
+    for end in end_nodes:
+        chain = []
+        cur = end
+        while cur is not None:
+            chain.append(cur)
+            cur = prev[cur]
+        chains.append(list(reversed(chain)))
+
+    # keep it readable: limit to a few longest chains
+    return max_len, chains[:3]
+
+def _graph_find_hotspots(nodes, indegree, adj, fan_in_min=2, fan_out_min=2):
+    """ identify potential bottlenecks / hotspots:
+
+        - high fan-in: nodes that depend on many others
+        - high fan-out: nodes that unlock many dependents
+
+        Returns:
+            high_in: [node, ...]
+            high_out: [node, ...]
+    """
+    high_in = [name for name in nodes if indegree[name] >= fan_in_min]
+    high_out = [name for name in nodes if len(adj[name]) >= fan_out_min]
+    return high_in, high_out
+
+def _graph_format_stats(max_chain_len, chains, high_in, high_out, indegree, adj):
+    """ format a Stats: section showing longest chains and fan-in/out hotspots.
+    """
+    lines = []
+    lines.append('Stats:')
+    lines.append(f'  Longest chain length (edges): {max_chain_len}')
+
+    if chains:
+        lines.append('  Longest chains:')
+        for chain in chains:
+            path = ' -> '.join(chain)
+            lines.append(f'    {path}')
+
+    if high_in:
+        lines.append('  High fan-in nodes (many dependencies):')
+        for name in high_in:
+            lines.append(f'    {name} (indegree={indegree[name]})')
+
+    if high_out:
+        lines.append('  High fan-out nodes (many dependents):')
+        for name in high_out:
+            lines.append(f'    {name} (children={len(adj[name])})')
+
+    return lines
+
 def format_graph_summary(dag):
     """ produce the full human-readable DAG summary used by the CLI.
 
@@ -169,6 +258,15 @@ def format_graph_summary(dag):
             [0] -> [2]
             ...
 
+            Stats:
+            Longest chain length (edges): 3
+            Longest chains:
+                test_a -> test_c -> test_d -> test_f
+            High fan-in nodes (many dependencies):
+                test_f (indegree=2)
+            High fan-out nodes (many dependents):
+                test_a (children=2)
+
         Returns:
             A single string containing the formatted summary.
     """
@@ -180,6 +278,8 @@ def format_graph_summary(dag):
     indegree, adj, num_edges = _graph_build_indegree_and_adj(dag, nodes)
     roots, leaves = _graph_find_roots_and_leaves(nodes, indegree, adj)
     levels = _graph_compute_levels(nodes, roots, indegree, adj, ids)
+    max_chain_len, chains = _graph_compute_longest_chains(nodes, levels, adj)
+    high_in, high_out = _graph_find_hotspots(nodes, indegree, adj)
 
     lines = []
 
@@ -198,5 +298,16 @@ def format_graph_summary(dag):
     lines.append('')
 
     lines.extend(_graph_format_edges(nodes, adj, ids))
+    lines.append('')
+
+    stats_lines = _graph_format_stats(
+        max_chain_len=max_chain_len,
+        chains=chains,
+        high_in=high_in,
+        high_out=high_out,
+        indegree=indegree,
+        adj=adj,
+    )
+    lines.extend(stats_lines)
 
     return '\n'.join(lines)
