@@ -383,7 +383,7 @@ class Scheduler:
         return self._graph
 
 
-def dmark(*, after=None, with_state=False, tag=None):
+def dmark(*, after=None, with_state=False, tags=None):
     """ mark a function for deferred registration by a Scheduler
         does NOT register anything; only attaches metadata for discovery
     """
@@ -400,7 +400,7 @@ def dmark(*, after=None, with_state=False, tag=None):
             'after': deps,
             'with_state': with_state,
             'orig_name': function.__name__,
-            'tag': tag,
+            'tags': [] if tags is None else [t.strip() for t in tags.split(',') if t.strip()],
         }
         return wrapped
 

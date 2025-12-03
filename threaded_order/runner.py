@@ -90,9 +90,9 @@ def collect_functions(module, tags_filter=None):
         meta = getattr(function, '__threaded_order__', None)
         if meta is None:
             continue
-        if tags_filter is not None:
-            tag = meta.get('tag')
-            if tag not in tags_filter:
+        if tags_filter:
+            tags = meta.get('tags')
+            if any(t not in tags for t in tags_filter):
                 continue
         functions.append((name, function, meta))
     return functions
@@ -119,7 +119,7 @@ def _main(argv=None):
         setup_logging=args.log,
         verbose=args.verbose)
 
-    tags_filter = args.tags.split(',') if args.tags else None
+    tags_filter = [] if not args.tags else [t.strip() for t in args.tags.split(',') if t.strip()]
     marked_functions = collect_functions(module, tags_filter=tags_filter)
     if not marked_functions:
         raise SystemExit(
