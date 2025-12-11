@@ -21,6 +21,7 @@ class DAGraph:
         """
         self._parents = defaultdict(list)
         self._children = defaultdict(set)
+        self._original_parents = {}
 
     def add(self, name, after=None):
         """ add a new node with optional dependencies
@@ -38,6 +39,7 @@ class DAGraph:
         if unknowns:
             raise ValueError(f'{name} depends on unknown {unknowns}')
         self._parents[name] = []
+        self._original_parents[name] = list(after) if after else []
         for dep in after:
             self._parents[name].append(dep)
             self._children[dep].add(name)
@@ -132,3 +134,8 @@ class DAGraph:
         """ return a list of child nodes (dependents) for a given node
         """
         return list(self._children.get(name, []))
+
+    def original_parents_of(self, name):
+        """ return a list of original parent nodes (dependencies) for a given node
+        """
+        return list(self._original_parents.get(name, []))
