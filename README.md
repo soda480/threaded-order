@@ -102,6 +102,7 @@ You get:
 * Mock upstream results for single-function runs
 * Graph inspection (`--graph`) to validate ordering and parallelism
 * Clean pass/fail summary
+* A failure in a function causes all of its dependents to be skipped.
 
 ### CLI usage
 ```bash
@@ -293,7 +294,7 @@ print(json.dumps(s.state, indent=2, default=str))
 import time
 import random
 from faker import Faker
-from threaded_order import dmark, ThreadProxyLogger
+from threaded_order import dmark, configure_logging, ThreadProxyLogger
 
 logger = ThreadProxyLogger()
 
@@ -301,6 +302,9 @@ def setup_state(state):
     state.update({
         'faker': Faker()
     })
+
+def setup_logging(workers, verbose):
+    configure_logging(workers, prefix='thread', add_stream_handler=True, verbose=verbose)
 
 def run(name, state, deps=None, fail=False):
     with state['_state_lock']:
@@ -317,7 +321,7 @@ def run(name, state, deps=None, fail=False):
             results.append(f'{name}.{dep_result}')
         if not results:
             results.append(name)
-        logger.info(f'{name} passed')
+        logger.info(f'{name} PASSED')
         return '|'.join(results)
 
 @dmark(with_state=True)
@@ -352,7 +356,7 @@ def test_f(state): return run('test_f', state, deps=['test_b', 'test_d'])
 import time
 import random
 from faker import Faker
-from threaded_order import dmark, ThreadProxyLogger
+from threaded_order import dmark, configure_logging, ThreadProxyLogger
 
 logger = ThreadProxyLogger()
 
@@ -360,6 +364,9 @@ def setup_state(state):
     state.update({
         'faker': Faker()
     })
+
+def setup_logging(workers, verbose):
+    configure_logging(workers, prefix='thread', add_stream_handler=True, verbose=verbose)
 
 def run(name, state, deps=None, fail=False):
     with state['_state_lock']:
@@ -376,7 +383,7 @@ def run(name, state, deps=None, fail=False):
             results.append(f'{name}.{dep_result}')
         if not results:
             results.append(name)
-        logger.info(f'{name} passed')
+        logger.info(f'{name} PASSED')
         state[name] = '|'.join(results)
 
 @dmark(with_state=True, tags='layer1')
