@@ -123,7 +123,7 @@ def _main(argv=None):
     marked_functions = collect_functions(module, tags_filter=tags_filter)
     if not marked_functions:
         raise SystemExit(
-            f'No @dmark functions found in {module_path}'
+            f'No @dmark functions found in {module_path} '
             'or no functions match the given tags filter')
 
     if function_name is not None:
