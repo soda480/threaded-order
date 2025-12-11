@@ -23,6 +23,7 @@ if HAS_COLOR:
         DEFAULT_HIGHLIGHTS = [
             (re.compile(r'\bPASSED\b', re.IGNORECASE), Fore.GREEN),
             (re.compile(r'\bFAILED\b', re.IGNORECASE), Fore.RED),
+            (re.compile(r'\bSKIPPED\b', re.IGNORECASE), Fore.YELLOW),
             (re.compile(r'Scheduler::State:\s*(\{.*?^})', re.DOTALL | re.MULTILINE), Fore.MAGENTA)
         ]
 

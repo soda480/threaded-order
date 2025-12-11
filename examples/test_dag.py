@@ -1,7 +1,7 @@
 import time
 import random
 from faker import Faker
-from threaded_order import dmark, ThreadProxyLogger
+from threaded_order import dmark, configure_logging, ThreadProxyLogger
 
 logger = ThreadProxyLogger()
 
@@ -9,6 +9,9 @@ def setup_state(state):
     state.update({
         'faker': Faker()
     })
+
+def setup_logging(workers, verbose):
+    configure_logging(workers, prefix='thread', add_stream_handler=True, verbose=verbose)
 
 def run(name, state, deps=None, fail=False):
     with state['_state_lock']:
@@ -25,7 +28,7 @@ def run(name, state, deps=None, fail=False):
             results.append(f'{name}.{dep_result}')
         if not results:
             results.append(name)
-        logger.info(f'{name} passed')
+        logger.info(f'{name} PASSED')
         state[name] = '|'.join(results)
 
 # ---------------------------------------------------------------------------

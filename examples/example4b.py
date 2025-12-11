@@ -12,7 +12,7 @@ def run(name, fail=False):
     if fail:
         assert False, "Intentional Failure"
     else:
-        logger.info(f'{name}: passed')
+        logger.info(f'{name}: PASSED')
     return sleep
 
 @s.dregister(with_state=True)

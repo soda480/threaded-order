@@ -49,6 +49,7 @@ class Scheduler:
         self._ran = []
         self._results = {}
         self._failed = []
+        self._skipped = []
 
         # user-defined callbacks
         self._on_task_start = None
@@ -123,7 +124,10 @@ class Scheduler:
                     'error': error
                 }
                 if not ok:
-                    self._failed.append(name)
+                    if error_type == 'DependencyError':
+                        self._skipped.append(name)
+                    else:
+                        self._failed.append(name)
 
                 self._callback(self._on_task_done, name, ok)
 
@@ -131,8 +135,22 @@ class Scheduler:
                 free = max(0, self._workers - len(self._active))
                 if free:
                     # keep pool full after dependency 'burst' - several tasks unblock at once
+                    failed_skipped_set = set(self._failed) | set(self._skipped)
                     for cand in self._graph.get_candidates(self._active, free):
-                        self._submit(cand)
+                        deps = self._graph.original_parents_of(cand)
+                        failed_deps = failed_skipped_set & set(deps)
+                        logger.debug(
+                            f'candidate {cand}, original deps: {deps}, '
+                            f'failed/skipped: {failed_skipped_set}')
+                        # skip if any dependencies failed
+                        if any(dep in failed_skipped_set for dep in deps):
+                            logger.info(f'{cand} SKIPPED')
+                            logger.debug(
+                                f'{cand} skipped due to failed dependencies: {failed_deps}')
+                            error = f'skipped due to failed dependency: {failed_deps}'
+                            self._events.put(('done', (cand, False, 'DependencyError', error)))
+                        else:
+                            self._submit(cand)
 
                 # check for overall completion
                 if self._graph.is_empty() and not self._active:
@@ -146,6 +164,7 @@ class Scheduler:
         ran = list(self._ran)
         passed = [name for name, result in self._results.items() if result["ok"]]
         failed = list(self._failed)
+        skipped = list(self._skipped)
         failures = {
             name: {
                 'error_type': self._results[name]['error_type'],
@@ -159,13 +178,17 @@ class Scheduler:
             'ran': ran,
             'passed': passed,
             'failed': failed,
+            'skipped': self._skipped,
             'failures': failures,
             'failure_counts': dict(failure_counts),
             'started_at': self._timer.started_at,
             'finished_at': self._timer.finished_at,
             'duration': self._timer.duration,
         }
-        text = f"==== {len(passed)} passed, {len(failed)} failed in {summary['duration']:.2f}s ===="
+        lp = len(passed)
+        lf = len(failed)
+        ls = len(skipped)
+        text = f"==== {lp} passed, {lf} failed, {ls} skipped in {summary['duration']:.2f}s ===="
         summary['text'] = f'{Style.BRIGHT + Fore.BLUE + text + Style.RESET_ALL}'
         return summary
 
@@ -211,6 +234,7 @@ class Scheduler:
         self._ran.clear()
         self._results.clear()
         self._failed.clear()
+        self._skipped.clear()
         self._completed.clear()
         self._futures.clear()
         self._active.clear()
@@ -332,7 +356,7 @@ class Scheduler:
         except Exception as exception:
             error_type = type(exception).__name__
             error = str(exception)
-            logger.error(f'{function.__name__}: failed: {error_type}: {error}')
+            logger.error(f'{function.__name__}: FAILED: {error_type}: {error}')
         return (name, ok, error_type, error)
 
     def _callback(self, callback, *args):
