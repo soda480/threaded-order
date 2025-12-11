@@ -154,12 +154,12 @@ def _main(argv=None):
         print(format_graph_summary(scheduler.graph))
         return
 
-    def on_done(summary):
-        print(summary['text'])
-
     summary = scheduler.start()
     logger.debug('Scheduler::State: ' + json.dumps(scheduler.state, indent=2, default=str))
-    on_done(summary)
+    print(summary['text'])
+
+    if len(summary.get('failed', [])) > 0:
+        sys.exit(1)
 
 def main(argv=None):
     """ main entry point with error handling
