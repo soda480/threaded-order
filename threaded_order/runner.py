@@ -42,6 +42,10 @@ def get_parser():
         '--graph',
         action='store_true',
         help='show dependency graph and exit')
+    parser.add_argument(
+        '--no-skip-dependents',
+        action='store_true',
+        help='do not skip functions whose dependencies failed')
     return parser
 
 def get_initial_state(unknown_args):
@@ -126,7 +130,8 @@ def _main(argv=None):
     scheduler_kwargs = {
         'workers': args.workers if args.workers else None,
         'state': initial_state,
-        'clear_results_on_start': clear_results_on_start
+        'clear_results_on_start': clear_results_on_start,
+        'skip_dependents': not args.no_skip_dependents
     }
     if args.log:
         setup_logging_function = getattr(module, 'setup_logging', None)
