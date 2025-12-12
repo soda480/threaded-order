@@ -10,21 +10,18 @@ from .timer import Timer
 from .logger import configure_logging
 from colorama import Fore, Style
 
+default_workers = min(8, os.cpu_count())
 
 class Scheduler:
     """ run functions concurrently across multiple threads while maintaining a defined
         execution order
     """
-    max_workers = min(8, os.cpu_count())
-
     def __init__(self, workers=None, setup_logging=False, add_stream_handler=True,
                  state=None, store_results=True, clear_results_on_start=True, verbose=False):
         """ initialize scheduler with thread pool size, logging, and callback placeholders
         """
         # number of concurrent worker threads in the pool
-        if workers is None:
-            workers = self.max_workers
-        self._workers = workers
+        self._workers = workers if workers else default_workers
         # task name → callable object to execute
         self._callables = {}
         # direct acyclic graph

@@ -7,7 +7,8 @@ __all__ = [
     'configure_logging',
     'ThreadProxyLogger',
     'dmark',
-    'tag'
+    'tag',
+    'default_workers',
     '__version__']
 
 def __getattr__(name):
@@ -29,12 +30,15 @@ def __getattr__(name):
     if name == 'tag':
         from .scheduler import tag
         return tag
+    if name == 'default_workers':
+        from .scheduler import default_workers
+        return default_workers
     raise AttributeError(name)
 
 try:
     __version__ = _metadata.version(__name__)
 except _metadata.PackageNotFoundError:
-    __version__ = '1.6.0'
+    __version__ = '1.6.1'
 
 if getenv('DEV'):
     __version__ = f'{__version__}+dev'

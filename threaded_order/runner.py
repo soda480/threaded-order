@@ -1,11 +1,11 @@
-import os
+import ast
 import sys
 import argparse
 import json
 import importlib.util
 import inspect
 from pathlib import Path
-from threaded_order import Scheduler, ThreadProxyLogger
+from threaded_order import Scheduler, ThreadProxyLogger, default_workers
 from threaded_order.graph_summary import format_graph_summary
 
 
@@ -23,7 +23,7 @@ def get_parser():
     parser.add_argument(
         '--workers',
         type=int,
-        default=min(8, os.cpu_count()),
+        default=default_workers,
         help='Number of worker threads (default: Scheduler default)')
     parser.add_argument(
         '--tags',
@@ -85,11 +85,23 @@ def load_module(path):
     spec.loader.exec_module(module)
     return module
 
+def get_functions(module):
+    """ yield (name, function) for all functions defined as they appear in the module
+    """
+    module_path = inspect.getsourcefile(module)
+    with open(module_path, 'r') as f:
+        tree = ast.parse(f.read(), filename=module_path)
+    function_names = [node.name for node in tree.body if isinstance(node, ast.FunctionDef)]
+    for function_name in function_names:
+        function = getattr(module, function_name)
+        if inspect.isfunction(function):
+            yield function_name, function
+
 def collect_functions(module, tags_filter=None):
     """ return (name, function, meta) for all functions marked by @dmark.
     """
     functions = []
-    for name, function in inspect.getmembers(module, inspect.isfunction):
+    for name, function in get_functions(module):
         meta = getattr(function, '__threaded_order__', None)
         if meta is None:
             continue
@@ -111,19 +123,24 @@ def _main(argv=None):
     module_path, function_name = split_target(args.target)
     module = load_module(module_path)
 
+    scheduler_kwargs = {
+        'workers': args.workers if args.workers else None,
+        'state': initial_state,
+        'clear_results_on_start': clear_results_on_start
+    }
     if args.log:
         setup_logging_function = getattr(module, 'setup_logging', None)
         if callable(setup_logging_function):
             setup_logging_function(args.workers, args.verbose)
+        else:
+            scheduler_kwargs['setup_logging'] = True
+            scheduler_kwargs['verbose'] = args.verbose
 
     setup_state_function = getattr(module, 'setup_state', None)
     if callable(setup_state_function):
         setup_state_function(initial_state)
 
-    scheduler = Scheduler(
-        workers=args.workers if args.workers else None,
-        state=initial_state,
-        clear_results_on_start=clear_results_on_start)
+    scheduler = Scheduler(**scheduler_kwargs)
 
     tags_filter = [] if not args.tags else [t.strip() for t in args.tags.split(',') if t.strip()]
     marked_functions = collect_functions(module, tags_filter=tags_filter)
