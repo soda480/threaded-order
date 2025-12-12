@@ -124,19 +124,24 @@ def _main(argv=None):
     module_path, function_name = split_target(args.target)
     module = load_module(module_path)
 
+    scheduler_kwargs = {
+        'workers': args.workers if args.workers else None,
+        'state': initial_state,
+        'clear_results_on_start': clear_results_on_start
+    }
     if args.log:
         setup_logging_function = getattr(module, 'setup_logging', None)
         if callable(setup_logging_function):
             setup_logging_function(args.workers, args.verbose)
+        else:
+            scheduler_kwargs['setup_logging'] = True
+            scheduler_kwargs['verbose'] = args.verbose
 
     setup_state_function = getattr(module, 'setup_state', None)
     if callable(setup_state_function):
         setup_state_function(initial_state)
 
-    scheduler = Scheduler(
-        workers=args.workers if args.workers else None,
-        state=initial_state,
-        clear_results_on_start=clear_results_on_start)
+    scheduler = Scheduler(**scheduler_kwargs)
 
     tags_filter = [] if not args.tags else [t.strip() for t in args.tags.split(',') if t.strip()]
     marked_functions = collect_functions(module, tags_filter=tags_filter)
