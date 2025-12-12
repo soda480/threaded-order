@@ -48,7 +48,8 @@ class Scheduler(
     clear_results_on_start=True,  # wipe previous results
     setup_logging=False,          # enable built-in logging config
     add_stream_handler=True,      # attach stream handler to logger
-    verbose=False                 # enable extra debug logging
+    verbose=False,                # enable extra debug logging
+    skip_dependents=False         # skip dependents when prerequisites fail
 )
 ```
 
@@ -102,24 +103,25 @@ You get:
 * Mock upstream results for single-function runs
 * Graph inspection (`--graph`) to validate ordering and parallelism
 * Clean pass/fail summary
-* A failure in a function causes all of its dependents to be skipped.
+* Functions with failed dependendencies are skipped (default behaivor)
 
 ### CLI usage
 ```bash
-usage: tdrun [-h] [--workers WORKERS] [--tags TAGS] [--log] [--verbose] [--graph] target
+usage: tdrun [-h] [--workers WORKERS] [--tags TAGS] [--log] [--verbose] [--graph] [--no-skip-dependents] target
 
 A threaded-order CLI for dependency-aware, parallel function execution.
 
 positional arguments:
-  target             Python file containing @dmark functions
+  target                Python file containing @dmark functions
 
 options:
-  -h, --help         show this help message and exit
-  --workers WORKERS  Number of worker threads (default: Scheduler default)
-  --tags TAGS        Comma-separated list of tags to filter functions by
-  --log              enable logging output
-  --verbose          enable verbose logging output
-  --graph            show dependency graph and exit
+  -h, --help            show this help message and exit
+  --workers WORKERS     Number of worker threads (default: Scheduler default)
+  --tags TAGS           Comma-separated list of tags to filter functions by
+  --log                 enable logging output
+  --verbose             enable verbose logging output
+  --graph               show dependency graph and exit
+  --no-skip-dependents  do not skip functions whose dependencies failed
 ```
 
 ### Run all marked functions in a module:

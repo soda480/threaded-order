@@ -1,4 +1,5 @@
 import ast
+import os
 import sys
 import argparse
 import json
@@ -42,6 +43,10 @@ def get_parser():
         '--graph',
         action='store_true',
         help='show dependency graph and exit')
+    parser.add_argument(
+        '--no-skip-dependents',
+        action='store_true',
+        help='do not skip functions whose dependencies failed')
     return parser
 
 def get_initial_state(unknown_args):
@@ -117,17 +122,21 @@ def _main(argv=None):
     """
     parser = get_parser()
 
+    # parse known args and setup initial state
     args, unkown_args = parser.parse_known_args(argv)
     initial_state, clear_results_on_start = get_initial_state(unkown_args)
 
+    # load target module
     module_path, function_name = split_target(args.target)
     module = load_module(module_path)
 
     scheduler_kwargs = {
         'workers': args.workers if args.workers else None,
         'state': initial_state,
-        'clear_results_on_start': clear_results_on_start
+        'clear_results_on_start': clear_results_on_start,
+        'skip_dependents': not args.no_skip_dependents
     }
+    # setup logging if requested
     if args.log:
         setup_logging_function = getattr(module, 'setup_logging', None)
         if callable(setup_logging_function):
@@ -136,12 +145,15 @@ def _main(argv=None):
             scheduler_kwargs['setup_logging'] = True
             scheduler_kwargs['verbose'] = args.verbose
 
+    # call setup_state if defined in the module
     setup_state_function = getattr(module, 'setup_state', None)
     if callable(setup_state_function):
         setup_state_function(initial_state)
 
+    # create the scheduler
     scheduler = Scheduler(**scheduler_kwargs)
 
+    # collect marked functions
     tags_filter = [] if not args.tags else [t.strip() for t in args.tags.split(',') if t.strip()]
     marked_functions = collect_functions(module, tags_filter=tags_filter)
     if not marked_functions:
@@ -149,16 +161,19 @@ def _main(argv=None):
             f'No @dmark functions found in {module_path} '
             'or no functions match the given tags filter')
 
+    # filter by specific function name if given
+    single_function_mode = False
     if function_name is not None:
-        filtered = [f for f in marked_functions if f[0] == function_name]
-        if not filtered:
+        filtered_functions = [f for f in marked_functions if f[0] == function_name]
+        if not filtered_functions:
             raise SystemExit(
                 f"function '{function_name}' not found or "
                 f"not marked with @dmark in {module_path} or "
                 "does not match the given tags filter")
-        marked_functions = filtered
-    single_function_mode = function_name is not None
+        marked_functions = filtered_functions
+        single_function_mode = True
 
+    # register functions with the scheduler
     logger.info(f'collected {len(marked_functions)} marked functions')
     for name, function, meta in marked_functions:
         after = meta.get('after') or None
@@ -178,7 +193,22 @@ def _main(argv=None):
         print(format_graph_summary(scheduler.graph))
         return
 
+    if not args.log:
+        # minimal logging to stdout to show progress
+        sys.stderr = open(os.devnull, 'w')
+
+        def on_task_done(name, ok):
+            if ok:
+                print('.', end='', flush=True)
+            else:
+                print('*', end='', flush=True)
+
+        scheduler.on_task_done(on_task_done)
+        scheduler.on_scheduler_done(lambda s: print('', flush=True))
+
     summary = scheduler.start()
+
+    # log state and print summary
     logger.debug('Scheduler::State: ' + json.dumps(scheduler.state, indent=2, default=str))
     print(summary['text'])
 

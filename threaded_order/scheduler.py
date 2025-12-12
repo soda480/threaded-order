@@ -17,7 +17,8 @@ class Scheduler:
         execution order
     """
     def __init__(self, workers=None, setup_logging=False, add_stream_handler=True,
-                 state=None, store_results=True, clear_results_on_start=True, verbose=False):
+                 state=None, store_results=True, clear_results_on_start=True, verbose=False,
+                 skip_dependents=False):
         """ initialize scheduler with thread pool size, logging, and callback placeholders
         """
         # number of concurrent worker threads in the pool
@@ -68,6 +69,8 @@ class Scheduler:
         if setup_logging or verbose:
             configure_logging(workers, prefix=self._prefix, add_stream_handler=add_stream_handler,
                               verbose=verbose)
+
+        self._skip_dependents = skip_dependents
 
     def register(self, obj, name, after=None, with_state=False):
         """ register a callable for execution, optionally dependent on other tasks
@@ -132,21 +135,28 @@ class Scheduler:
                 free = max(0, self._workers - len(self._active))
                 if free:
                     # keep pool full after dependency 'burst' - several tasks unblock at once
-                    failed_skipped_set = set(self._failed) | set(self._skipped)
-                    for cand in self._graph.get_candidates(self._active, free):
-                        deps = self._graph.original_parents_of(cand)
-                        failed_deps = failed_skipped_set & set(deps)
-                        logger.debug(
-                            f'candidate {cand}, original deps: {deps}, '
-                            f'failed/skipped: {failed_skipped_set}')
-                        # skip if any dependencies failed
-                        if any(dep in failed_skipped_set for dep in deps):
-                            logger.info(f'{cand} SKIPPED')
+
+                    if self._skip_dependents:
+                        failed_skipped_set = set(self._failed) | set(self._skipped)
+                        for cand in self._graph.get_candidates(self._active, free):
+                            deps = self._graph.original_parents_of(cand)
+                            failed_deps = failed_skipped_set & set(deps)
                             logger.debug(
-                                f'{cand} skipped due to failed dependencies: {failed_deps}')
-                            error = f'skipped due to failed dependency: {failed_deps}'
-                            self._events.put(('done', (cand, False, 'DependencyError', error)))
-                        else:
+                                f'candidate {cand}, original deps: {deps}, '
+                                f'failed/skipped: {failed_skipped_set}')
+                            # skip if any dependencies failed
+                            if any(dep in failed_skipped_set for dep in deps):
+                                logger.info(f'{cand} SKIPPED')
+                                logger.debug(
+                                    f'{cand} skipped due to failed dependencies: {failed_deps}')
+                                error = f'skipped due to failed dependency: {failed_deps}'
+                                # add to active to avoid re-selection
+                                self._active.add(cand)
+                                self._events.put(('done', (cand, False, 'DependencyError', error)))
+                            else:
+                                self._submit(cand)
+                    else:
+                        for cand in self._graph.get_candidates(self._active, free):
                             self._submit(cand)
 
                 # check for overall completion
