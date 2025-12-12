@@ -150,6 +150,8 @@ class Scheduler:
                                 logger.debug(
                                     f'{cand} skipped due to failed dependencies: {failed_deps}')
                                 error = f'skipped due to failed dependency: {failed_deps}'
+                                # add to active to avoid re-selection
+                                self._active.add(cand)
                                 self._events.put(('done', (cand, False, 'DependencyError', error)))
                             else:
                                 self._submit(cand)
