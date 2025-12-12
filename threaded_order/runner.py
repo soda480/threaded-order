@@ -1,3 +1,4 @@
+import ast
 import os
 import sys
 import argparse
@@ -85,11 +86,23 @@ def load_module(path):
     spec.loader.exec_module(module)
     return module
 
+def get_functions(module):
+    """ yield (name, function) for all functions defined as they appear in the module
+    """
+    module_path = inspect.getsourcefile(module)
+    with open(module_path, 'r') as f:
+        tree = ast.parse(f.read(), filename=module_path)
+    function_names = [node.name for node in tree.body if isinstance(node, ast.FunctionDef)]
+    for function_name in function_names:
+        function = getattr(module, function_name)
+        if inspect.isfunction(function):
+            yield function_name, function
+
 def collect_functions(module, tags_filter=None):
     """ return (name, function, meta) for all functions marked by @dmark.
     """
     functions = []
-    for name, function in inspect.getmembers(module, inspect.isfunction):
+    for name, function in get_functions(module):
         meta = getattr(function, '__threaded_order__', None)
         if meta is None:
             continue

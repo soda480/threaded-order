@@ -34,7 +34,10 @@ def run(name, state, deps=None, fail=False):
 @dmark(with_state=True, tags='layer1')
 def test_a(state): return run('test_a', state)
 
-@dmark(with_state=True, after=['test_a'], tags='layer2')
+@dmark(with_state=True, tags='layer1')
+def test_z(state): return run('test_z', state)
+
+@dmark(with_state=True, after=['test_a', 'test_z'], tags='layer2')
 def test_b(state): return run('test_b', state, deps=['test_a'])
 
 @dmark(with_state=True, after=['test_a'], tags='layer2')
@@ -48,3 +51,4 @@ def test_e(state): return run('test_e', state, deps=['test_c'])
 
 @dmark(with_state=True, after=['test_b', 'test_d'], tags='layer4')
 def test_f(state): return run('test_f', state, deps=['test_b', 'test_d'])
+
