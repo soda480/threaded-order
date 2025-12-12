@@ -7,7 +7,8 @@ __all__ = [
     'configure_logging',
     'ThreadProxyLogger',
     'dmark',
-    'tag'
+    'tag',
+    'default_workers',
     '__version__']
 
 def __getattr__(name):
@@ -29,6 +30,9 @@ def __getattr__(name):
     if name == 'tag':
         from .scheduler import tag
         return tag
+    if name == 'default_workers':
+        from .scheduler import default_workers
+        return default_workers
     raise AttributeError(name)
 
 try:

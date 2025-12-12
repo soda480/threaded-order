@@ -1,12 +1,11 @@
 import ast
-import os
 import sys
 import argparse
 import json
 import importlib.util
 import inspect
 from pathlib import Path
-from threaded_order import Scheduler, ThreadProxyLogger
+from threaded_order import Scheduler, ThreadProxyLogger, default_workers
 from threaded_order.graph_summary import format_graph_summary
 
 
@@ -24,7 +23,7 @@ def get_parser():
     parser.add_argument(
         '--workers',
         type=int,
-        default=min(8, os.cpu_count()),
+        default=default_workers,
         help='Number of worker threads (default: Scheduler default)')
     parser.add_argument(
         '--tags',
