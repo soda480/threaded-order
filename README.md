@@ -107,21 +107,21 @@ You get:
 
 ### CLI usage
 ```bash
-usage: tdrun [-h] [--workers WORKERS] [--tags TAGS] [--log] [--verbose] [--graph] [--no-skip-dependents] target
+usage: tdrun [-h] [--workers WORKERS] [--tags TAGS] [--log] [--verbose] [--graph] [--skip-deps] target
 
 A threaded-order CLI for dependency-aware, parallel function execution.
 
 positional arguments:
-  target                Python file containing @dmark functions
+  target             Python file containing @dmark functions
 
 options:
-  -h, --help            show this help message and exit
-  --workers WORKERS     Number of worker threads (default: Scheduler default)
-  --tags TAGS           Comma-separated list of tags to filter functions by
-  --log                 enable logging output
-  --verbose             enable verbose logging output
-  --graph               show dependency graph and exit
-  --no-skip-dependents  do not skip functions whose dependencies failed
+  -h, --help         show this help message and exit
+  --workers WORKERS  Number of worker threads (default: Scheduler default)
+  --tags TAGS        Comma-separated list of tags to filter functions by
+  --log              enable logging output
+  --verbose          enable verbose logging output
+  --graph            show dependency graph and exit
+  --skip-deps        skip functions whose dependencies failed
 ```
 
 ### Run all marked functions in a module:

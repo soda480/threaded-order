@@ -94,6 +94,62 @@ class Scheduler:
             return wrapper
         return decorator
 
+    def _maybe_schedule_next(self, logger):
+        """ schedule next ready tasks if there are free worker slots
+        """
+        # determine number of free worker slots
+        free = max(0, self._workers - len(self._active))
+        if not free:
+            return
+
+        # get ready candidates
+        cands = self._graph.get_candidates(self._active, free)
+        if not self._skip_dependents:
+            # no skipping of dependents; submit all candidates
+            for cand in cands:
+                self._submit(cand)
+            return
+
+        # skipping of dependents enabled; check for failed dependencies
+        failed_or_skipped = set(self._failed) | set(self._skipped)
+        for cand in cands:
+            deps = self._graph.original_parents_of(cand)
+            failed_deps = failed_or_skipped & set(deps)
+            if failed_deps:
+                # skip this candidate due to failed dependencies
+                logger.info(f'{cand} SKIPPED')
+                logger.debug(f'{cand} skipped due to failed dependencies: {failed_deps}')
+                error = f'skipped due to failed dependency: {failed_deps}'
+                # add to active to avoid re-selection
+                self._active.add(cand)
+                self._events.put(('done', (cand, False, 'DependencyError', error)))
+            else:
+                self._submit(cand)
+
+    def _handle_done(self, payload, logger):
+        """ process a completed task, record its result, and schedule next tasks
+        """
+        name, ok, error_type, error = payload
+        logger.debug(f'removing {name!r} from active futures')
+        self._active.discard(name)
+        self._graph.remove(name)
+        self._ran.append(name)
+        self._results[name] = {
+            'ok': ok,
+            'error_type': error_type,
+            'error': error
+        }
+        if not ok:
+            (self._skipped if error_type == 'DependencyError' else self._failed).append(name)
+
+        self._callback(self._on_task_done, name, ok)
+        self._maybe_schedule_next(logger)
+
+        # check for overall completion
+        if self._graph.is_empty() and not self._active:
+            logger.debug('nothing more to run and no active futures remain - signaling all done')
+            self._completed.set()
+
     def _handle_event(self):
         """ process queued task and scheduler events on the scheduler thread
         """
@@ -113,57 +169,7 @@ class Scheduler:
                 self._callback(self._on_task_run, name, thread)
 
             elif kind == 'done':
-                name, ok, error_type, error = payload
-                logger.debug(f'removing {name!r} from active futures')
-                self._active.discard(name)
-                self._graph.remove(name)
-                self._ran.append(name)
-                self._results[name] = {
-                    'ok': ok,
-                    'error_type': error_type,
-                    'error': error
-                }
-                if not ok:
-                    if error_type == 'DependencyError':
-                        self._skipped.append(name)
-                    else:
-                        self._failed.append(name)
-
-                self._callback(self._on_task_done, name, ok)
-
-                # schedule next candidate
-                free = max(0, self._workers - len(self._active))
-                if free:
-                    # keep pool full after dependency 'burst' - several tasks unblock at once
-
-                    if self._skip_dependents:
-                        failed_skipped_set = set(self._failed) | set(self._skipped)
-                        for cand in self._graph.get_candidates(self._active, free):
-                            deps = self._graph.original_parents_of(cand)
-                            failed_deps = failed_skipped_set & set(deps)
-                            logger.debug(
-                                f'candidate {cand}, original deps: {deps}, '
-                                f'failed/skipped: {failed_skipped_set}')
-                            # skip if any dependencies failed
-                            if any(dep in failed_skipped_set for dep in deps):
-                                logger.info(f'{cand} SKIPPED')
-                                logger.debug(
-                                    f'{cand} skipped due to failed dependencies: {failed_deps}')
-                                error = f'skipped due to failed dependency: {failed_deps}'
-                                # add to active to avoid re-selection
-                                self._active.add(cand)
-                                self._events.put(('done', (cand, False, 'DependencyError', error)))
-                            else:
-                                self._submit(cand)
-                    else:
-                        for cand in self._graph.get_candidates(self._active, free):
-                            self._submit(cand)
-
-                # check for overall completion
-                if self._graph.is_empty() and not self._active:
-                    logger.debug(
-                        'nothing more to run and no active futures remain - signaling all done')
-                    self._completed.set()
+                self._handle_done(payload, logger)
 
     def _build_summary(self):
         """ assemble concise run summary from collected results and timings
