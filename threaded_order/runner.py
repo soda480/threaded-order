@@ -44,9 +44,9 @@ def get_parser():
         action='store_true',
         help='show dependency graph and exit')
     parser.add_argument(
-        '--no-skip-dependents',
+        '--skip-deps',
         action='store_true',
-        help='do not skip functions whose dependencies failed')
+        help='skip functions whose dependencies failed')
     return parser
 
 def get_initial_state(unknown_args):
@@ -134,7 +134,7 @@ def _main(argv=None):
         'workers': args.workers if args.workers else None,
         'state': initial_state,
         'clear_results_on_start': clear_results_on_start,
-        'skip_dependents': not args.no_skip_dependents
+        'skip_dependents': args.skip_deps,
     }
     # setup logging if requested
     if args.log:
