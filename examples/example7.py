@@ -1,7 +1,7 @@
 import time
 import random
 from faker import Faker
-from threaded_order import dmark, configure_logging, ThreadProxyLogger
+from threaded_order import mark, configure_logging, ThreadProxyLogger
 
 logger = ThreadProxyLogger()
 
@@ -31,24 +31,24 @@ def run(name, state, deps=None, fail=False):
         logger.info(f'{name} PASSED')
         state[name] = '|'.join(results)
 
-@dmark(with_state=True, tags='layer1')
+@mark(tags='layer1')
 def test_a(state): return run('test_a', state)
 
-@dmark(with_state=True, tags='layer1')
+@mark(tags='layer1')
 def test_z(state): return run('test_z', state)
 
-@dmark(with_state=True, after=['test_a', 'test_z'], tags='layer2')
+@mark(after=['test_a', 'test_z'], tags='layer2')
 def test_b(state): return run('test_b', state, deps=['test_a'])
 
-@dmark(with_state=True, after=['test_a'], tags='layer2')
+@mark(after=['test_a'], tags='layer2')
 def test_c(state): return run('test_c', state, deps=['test_a'])
 
-@dmark(with_state=True, after=['test_c'], tags='layer3')
+@mark(after=['test_c'], tags='layer3')
 def test_d(state): return run('test_d', state, deps=['test_c'], fail=True)
     
-@dmark(with_state=True, after=['test_c'], tags='layer3')
+@mark(after=['test_c'], tags='layer3')
 def test_e(state): return run('test_e', state, deps=['test_c'])
 
-@dmark(with_state=True, after=['test_b', 'test_d'], tags='layer4')
+@mark(after=['test_b', 'test_d'], tags='layer4')
 def test_f(state): return run('test_f', state, deps=['test_b', 'test_d'])
 

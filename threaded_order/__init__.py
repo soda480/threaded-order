@@ -1,4 +1,5 @@
 from importlib import metadata as _metadata
+import importlib
 from os import getenv
 
 __all__ = [
@@ -7,7 +8,7 @@ __all__ = [
     'configure_logging',
     'ThreadProxyLogger',
     'dmark',
-    'tag',
+    'mark',
     'default_workers',
     '__version__']
 
@@ -27,18 +28,24 @@ def __getattr__(name):
     if name == 'dmark':
         from .scheduler import dmark
         return dmark
-    if name == 'tag':
-        from .scheduler import tag
-        return tag
+    if name == 'mark':
+        from .scheduler import mark
+        return mark
     if name == 'default_workers':
         from .scheduler import default_workers
         return default_workers
-    raise AttributeError(name)
+    # If the requested attribute isn't one of the known top-level symbols,
+    # try to lazily import a submodule (e.g. `threaded_order.scheduler`) so
+    # attribute lookups such as those used by mocking/patching succeed.
+    try:
+        return importlib.import_module(f"{__name__}.{name}")
+    except Exception:
+        raise AttributeError(name)
 
 try:
     __version__ = _metadata.version(__name__)
 except _metadata.PackageNotFoundError:
-    __version__ = '1.6.3'
+    __version__ = '1.6.4'
 
 if getenv('DEV'):
     __version__ = f'{__version__}+dev'

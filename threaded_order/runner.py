@@ -20,7 +20,7 @@ def get_parser():
         description='A threaded-order CLI for dependency-aware, parallel function execution.')
     parser.add_argument(
         'target',
-        help='Python file containing @dmark functions')
+        help='Python file containing @mark functions')
     parser.add_argument(
         '--workers',
         type=int,
@@ -103,7 +103,7 @@ def get_functions(module):
             yield function_name, function
 
 def collect_functions(module, tags_filter=None):
-    """ return (name, function, meta) for all functions marked by @dmark.
+    """ return (name, function, meta) for all functions marked by @mark.
     """
     functions = []
     for name, function in get_functions(module):
@@ -156,12 +156,12 @@ def _register_functions(scheduler, marked_functions, tags_filter, single_functio
         scheduler.register(function, name=name, after=after, with_state=with_state)
 
 def _collect_and_filter_functions(module, module_path, tags_filter, function_name):
-    """ collect @dmark functions and apply tag and name filtering
+    """ collect @mark functions and apply tag and name filtering
     """
     marked_functions = collect_functions(module, tags_filter=tags_filter)
     if not marked_functions:
         raise SystemExit(
-            f'No @dmark functions found in {module_path} '
+            f'No @mark functions found in {module_path} '
             'or no functions match the given tags filter')
 
     single_function_mode = False
@@ -170,7 +170,7 @@ def _collect_and_filter_functions(module, module_path, tags_filter, function_nam
         if not filtered:
             raise SystemExit(
                 f"function '{function_name}' not found or "
-                f"not marked with @dmark in {module_path} or "
+                f"not marked with @mark in {module_path} or "
                 'does not match the given tags filter')
         marked_functions = filtered
         single_function_mode = True

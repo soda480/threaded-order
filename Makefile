@@ -35,7 +35,7 @@ help:
 	@printf "  make scrub          - Remove virtual environment\n"
 	@printf "  make dev            - Execute development pipeline (venv lint test coverage cc bandit build)\n"
 
-dev: venv lint cc bandit build
+dev: venv lint cc bandit coverage build
 	@printf "$(YELLOW)Development pipeline complete.$(RESET)\n"
 
 # Rebuild the venv only when pyproject.toml changes

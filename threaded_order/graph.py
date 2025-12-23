@@ -43,6 +43,7 @@ class DAGraph:
         for dep in after:
             self._parents[name].append(dep)
             self._children[dep].add(name)
+        # defensive: future refactor may allow updating deps
         if self._has_cycle():
             # rollback this node to keep DAG consistent
             for dep in after:
