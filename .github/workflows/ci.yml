@@ -30,6 +30,9 @@ jobs:
       - name: lint source code 
         run: make lint
 
+      - name: run unit tests
+        run: make test
+
       - name: run bandit scan
         run: make bandit
 
