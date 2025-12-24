@@ -1,4 +1,5 @@
 [![ci](https://github.com/soda480/threaded-order/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/soda480/threaded-order/actions/workflows/ci.yml)
+![Coverage](https://raw.githubusercontent.com/soda480/threaded-order/main/badges/coverage.svg)
 [![PyPI version](https://badge.fury.io/py/threaded-order.svg)](https://badge.fury.io/py/threaded-order)
 
 # threaded-order
@@ -20,7 +21,7 @@ Use it when you want:
 ## Key Features
 * Parallel execution using Python threads backed by a dependency DAG
 * Deterministic ordering based on `after=[...]` relationships
-* Decorator-based API (`@dmark`, `@dregister`) for clean task definitions
+* Decorator-based API (`@mark`, `@dregister`) for clean task definitions
 * Shared state (opt-in) with a thread-safe, built-in lock
 * Thread-safe logging via `ThreadProxyLogger`
 * Graceful interrupt handling and clear run summaries
@@ -43,7 +44,7 @@ pip install threaded-order
 ```python
 class Scheduler(
     workers=None,                 # max number of worker threads
-    state=None,                   # shared state dict passed to @dmark functions
+    state=None,                   # shared state dict passed to @mark functions
     store_results=True,           # save return values into state["results"]
     clear_results_on_start=True,  # wipe previous results
     setup_logging=False,          # enable built-in logging config
@@ -61,7 +62,7 @@ Runs registered callables across multiple threads while respecting declared depe
 | `register(obj, name, after=None, with_state=False)` |	Register a callable for execution. after defines dependencies by name, specify if function is to receive the shared state. |
 | `dregister(after=None, with_state=False)` | Decorator variant of register() for inline task definitions. |
 | `start()` | Start execution, respecting dependencies. Returns a summary dictionary. |
-| `dmark(after=None, with_state=False, tags=None)` | Decorator that marks a function for deferred registration by the scheduler, allowing you to declare dependencies (after) and whether the function should receive the shared state (with_state), and optionally add tags to the function (tags) for execution filtering. |
+| `mark(after=None, with_state=True, tags=None)` | Decorator that marks a function for deferred registration by the scheduler, allowing you to declare dependencies (after) and whether the function should receive the shared state (with_state), and optionally add tags to the function (tags) for execution filtering. |
 
 ### Callbacks
 
@@ -93,7 +94,7 @@ Press Ctrl-C during execution to gracefully cancel outstanding work:
 
 `tdrun` is a DAG-aware, parallel test runner built on top of the threaded-order scheduler.
 
-It discovers `@dmark` functions inside a module, builds a dependency graph, and executes everything in parallel while preserving deterministic order.
+It discovers `@mark` functions inside a module, builds a dependency graph, and executes everything in parallel while preserving deterministic order.
 
 You get:
 * Parallel execution based on the Scheduler
@@ -112,7 +113,7 @@ usage: tdrun [-h] [--workers WORKERS] [--tags TAGS] [--log] [--verbose] [--graph
 A threaded-order CLI for dependency-aware, parallel function execution.
 
 positional arguments:
-  target             Python file containing @dmark functions
+  target             Python file containing @mark functions
 
 options:
   -h, --help         show this help message and exit
@@ -132,14 +133,14 @@ tdrun path/to/module.py
 
 ### Run a single function:
 ```bash
-tdrun module.py::test_b
+tdrun module.py::fn_b
 ```
 
 This isolates the function and ignores its upstream dependencies.
 
 You can provide mocked results:
 ```bash
-tdrun module.py::test_b --result-test_a=mock_value
+tdrun module.py::fn_b --result-fn_a=mock_value
 ```
 
 ### Inject arbitrary state parameters
@@ -296,7 +297,7 @@ print(json.dumps(s.state, indent=2, default=str))
 import time
 import random
 from faker import Faker
-from threaded_order import dmark, configure_logging, ThreadProxyLogger
+from threaded_order import mark, configure_logging, ThreadProxyLogger
 
 logger = ThreadProxyLogger()
 
@@ -326,22 +327,22 @@ def run(name, state, deps=None, fail=False):
         logger.info(f'{name} PASSED')
         return '|'.join(results)
 
-@dmark(with_state=True)
+@mark(with_state=True)
 def test_a(state): return run('test_a', state)
 
-@dmark(with_state=True, after=['test_a'])
+@mark(after=['test_a'])
 def test_b(state): return run('test_b', state, deps=['test_a'])
 
-@dmark(with_state=True, after=['test_a'])
+@mark(after=['test_a'])
 def test_c(state): return run('test_c', state, deps=['test_a'])
 
-@dmark(with_state=True, after=['test_c'])
+@mark(after=['test_c'])
 def test_d(state): return run('test_d', state, deps=['test_c'], fail=True)
     
-@dmark(with_state=True, after=['test_c'])
+@mark(after=['test_c'])
 def test_e(state): return run('test_e', state, deps=['test_c'])
 
-@dmark(with_state=True, after=['test_b', 'test_d'])
+@mark(after=['test_b', 'test_d'])
 def test_f(state): return run('test_f', state, deps=['test_b', 'test_d'])
 ```
 
@@ -358,7 +359,7 @@ def test_f(state): return run('test_f', state, deps=['test_b', 'test_d'])
 import time
 import random
 from faker import Faker
-from threaded_order import dmark, configure_logging, ThreadProxyLogger
+from threaded_order import mark, configure_logging, ThreadProxyLogger
 
 logger = ThreadProxyLogger()
 
@@ -388,22 +389,22 @@ def run(name, state, deps=None, fail=False):
         logger.info(f'{name} PASSED')
         state[name] = '|'.join(results)
 
-@dmark(with_state=True, tags='layer1')
+@mark(tags='layer1')
 def test_a(state): return run('test_a', state)
 
-@dmark(with_state=True, after=['test_a'], tags='layer2')
+@mark(after=['test_a'], tags='layer2')
 def test_b(state): return run('test_b', state, deps=['test_a'])
 
-@dmark(with_state=True, after=['test_a'], tags='layer2')
+@mark(after=['test_a'], tags='layer2')
 def test_c(state): return run('test_c', state, deps=['test_a'])
 
-@dmark(with_state=True, after=['test_c'], tags='layer3')
+@mark(after=['test_c'], tags='layer3')
 def test_d(state): return run('test_d', state, deps=['test_c'], fail=True)
     
-@dmark(with_state=True, after=['test_c'], tags='layer3')
+@mark(after=['test_c'], tags='layer3')
 def test_e(state): return run('test_e', state, deps=['test_c'])
 
-@dmark(with_state=True, after=['test_b', 'test_d'], tags='layer4')
+@mark(after=['test_b', 'test_d'], tags='layer4')
 def test_f(state): return run('test_f', state, deps=['test_b', 'test_d'])
 ```
 

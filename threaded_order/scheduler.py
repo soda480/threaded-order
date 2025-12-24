@@ -67,8 +67,8 @@ class Scheduler:
 
         self._prefix = 'thread'
         if setup_logging or verbose:
-            configure_logging(workers, prefix=self._prefix, add_stream_handler=add_stream_handler,
-                              verbose=verbose)
+            configure_logging(self._workers, prefix=self._prefix,
+                              add_stream_handler=add_stream_handler, verbose=verbose)
 
         self._skip_dependents = skip_dependents
 
@@ -418,6 +418,30 @@ class Scheduler:
         """ return the underlying dependency graph (read-only)
         """
         return self._graph
+
+
+def mark(*, after=None, with_state=True, tags=None):
+    """ mark a function for deferred registration by a Scheduler
+        does NOT register anything; only attaches metadata for discovery
+    """
+    deps = list(after) if after else []
+
+    def decorator(function):
+        # preserve wrapper metadata if function is further decorated later
+        @wraps(function)
+        def wrapped(*args, **kwargs):
+            return function(*args, **kwargs)
+
+        # attach metadata to the function object
+        wrapped.__threaded_order__ = {
+            'after': deps,
+            'with_state': with_state,
+            'orig_name': function.__name__,
+            'tags': [] if tags is None else [t.strip() for t in tags.split(',') if t.strip()],
+        }
+        return wrapped
+
+    return decorator
 
 
 def dmark(*, after=None, with_state=False, tags=None):
