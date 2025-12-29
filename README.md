@@ -105,10 +105,11 @@ You get:
 * Graph inspection (`--graph`) to validate ordering and parallelism
 * Clean pass/fail summary
 * Functions with failed dependendencies are skipped (default behaivor)
+* Progress Bar integration-ready
 
 ### CLI usage
 ```bash
-usage: tdrun [-h] [--workers WORKERS] [--tags TAGS] [--log] [--verbose] [--graph] [--skip-deps] target
+usage: tdrun [-h] [--workers WORKERS] [--tags TAGS] [--log] [--verbose] [--graph] [--skip-deps] [--progress] target
 
 A threaded-order CLI for dependency-aware, parallel function execution.
 
@@ -123,6 +124,7 @@ options:
   --verbose          enable verbose logging output
   --graph            show dependency graph and exit
   --skip-deps        skip functions whose dependencies failed
+  --progress         show progress bar (requires progress1bar package)
 ```
 
 ### Run all marked functions in a module:
@@ -419,6 +421,7 @@ Can be done by using the `on_task_done` callback. See [example5](https://github.
 
 ![example5](https://github.com/soda480/threaded-order/blob/main/docs/images/example5.gif?raw=true)
 
+`tdrun` CLI progress bar integration provided via `--progress` argument, requires installation of [progress1bar](https://pypi.org/project/progress1bar) package.
 
 ## Development
 
