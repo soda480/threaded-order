@@ -1,14 +1,20 @@
 import ast
 import os
 import sys
+import logging
 import argparse
 import json
 import importlib.util
 import inspect
+from contextlib import nullcontext
 from pathlib import Path
 from threaded_order import Scheduler, ThreadProxyLogger, default_workers
 from threaded_order.graph_summary import format_graph_summary
-
+try:
+    from progress1bar import ProgressBar
+    HAS_PROGRESS_BAR = True
+except ImportError:
+    HAS_PROGRESS_BAR = False
 
 logger = ThreadProxyLogger()
 
@@ -47,6 +53,10 @@ def get_parser():
         '--skip-deps',
         action='store_true',
         help='skip functions whose dependencies failed')
+    parser.add_argument(
+        '--progress',
+        action='store_true',
+        help='show progress bar (requires progress1bar package)')
     return parser
 
 def get_initial_state(unknown_args):
@@ -117,20 +127,36 @@ def collect_functions(module, tags_filter=None):
         functions.append((name, function, meta))
     return functions
 
-def _maybe_setup_minimal_progress_output(scheduler, args):
-    """ configure minimal stdout progress when logging is disabled
+def _maybe_setup_progress_output(scheduler, args):
+    """ configure progress output based on args
     """
-    if args.log:
-        return
+    if args.progress:
+        if not HAS_PROGRESS_BAR:
+            raise SystemExit('progress1bar package is required for progress bar output')
+        if not args.log:
+            # disable error logging noise
+            logging.disable(logging.ERROR)
 
-    # suppress scheduler logging noise
-    sys.stderr = open(os.devnull, 'w')
+        def on_task_done(name, ok, pb):
+            pb.count += 1
+            pb.alias = name
 
-    def on_task_done(name, ok):
-        print('.' if ok else '*', end='', flush=True)
+        total = len(scheduler.graph.nodes())
+        pb = ProgressBar(total=total, show_complete=False, clear_alias=True)
+        scheduler.on_task_done(on_task_done, pb)
+        return pb
 
-    scheduler.on_task_done(on_task_done)
-    scheduler.on_scheduler_done(lambda s: print('', flush=True))
+    else:
+        if not args.log:
+            # suppress scheduler logging noise
+            sys.stderr = open(os.devnull, 'w')
+
+            def on_task_done(name, ok):
+                print('.' if ok else '*', end='', flush=True)
+
+            scheduler.on_task_done(on_task_done)
+            scheduler.on_scheduler_done(lambda s: print('', flush=True))
+        return nullcontext()
 
 def _register_functions(scheduler, marked_functions, tags_filter, single_function_mode):
     """ register collected functions with the scheduler
@@ -211,8 +237,19 @@ def _build_scheduler_kwargs(args, initial_state, clear_results_on_start, module)
     else:
         scheduler_kwargs['setup_logging'] = True
         scheduler_kwargs['verbose'] = args.verbose
+        scheduler_kwargs['add_stream_handler'] = not args.progress
 
     return scheduler_kwargs
+
+def validate_args(args):
+    """ validate parsed args
+    """
+    if args.progress and not HAS_PROGRESS_BAR:
+        raise SystemExit(
+            'Error: progress1bar package is required for progress bar output')
+    if args.progress and args.verbose:
+        raise SystemExit(
+            'Error: the --progress and --verbose arguments cannot be used together')
 
 def _main(argv=None):
     """ main CLI entry point
@@ -221,6 +258,7 @@ def _main(argv=None):
 
     # parse args and initialize shared state
     args, unknown_args = parser.parse_known_args(argv)
+    validate_args(args)
     initial_state, clear_results_on_start = get_initial_state(unknown_args)
 
     # load target module and resolve target function
@@ -247,9 +285,8 @@ def _main(argv=None):
         print(format_graph_summary(scheduler.graph))
         return
 
-    _maybe_setup_minimal_progress_output(scheduler, args)
-
-    summary = scheduler.start()
+    with _maybe_setup_progress_output(scheduler, args):
+        summary = scheduler.start()
 
     # debug final state and print user-facing summary
     logger.debug('Scheduler::State: ' + json.dumps(scheduler.state, indent=2, default=str))

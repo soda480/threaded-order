@@ -1,7 +1,7 @@
 import time
 import random
 from faker import Faker
-from threaded_order import mark, configure_logging, ThreadProxyLogger
+from threaded_order import mark, ThreadProxyLogger
 
 logger = ThreadProxyLogger()
 
