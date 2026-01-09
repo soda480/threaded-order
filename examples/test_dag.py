@@ -25,7 +25,7 @@ def run(name, state, deps=None, fail=False):
             results.append(f'{name}.{dep_result}')
         if not results:
             results.append(name)
-        logger.info(f'{name} PASSED')
+        # logger.info(f'{name} PASSED')
         state[name] = '|'.join(results)
 
 # ---------------------------------------------------------------------------

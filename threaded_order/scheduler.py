@@ -5,12 +5,22 @@ import logging
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, CancelledError
 from functools import wraps
+from enum import Enum
 from .graph import DAGraph
 from .timer import Timer
 from .logger import configure_logging
-from colorama import Fore, Style
+try:
+    from colorama import Fore, Style
+    HAS_COLOR = True
+except ImportError:
+    HAS_COLOR = False
 
 default_workers = min(8, os.cpu_count())
+
+class TaskStatus(Enum):
+    PASSED = 'PASSED'
+    FAILED = 'FAILED'
+    SKIPPED = 'SKIPPED'
 
 class Scheduler:
     """ run functions concurrently across multiple threads while maintaining a defined
@@ -117,7 +127,6 @@ class Scheduler:
             failed_deps = failed_or_skipped & set(deps)
             if failed_deps:
                 # skip this candidate due to failed dependencies
-                logger.info(f'{cand} SKIPPED')
                 logger.debug(f'{cand} skipped due to failed dependencies: {failed_deps}')
                 error = f'skipped due to failed dependency: {failed_deps}'
                 # add to active to avoid re-selection
@@ -140,9 +149,16 @@ class Scheduler:
             'error': error
         }
         if not ok:
-            (self._skipped if error_type == 'DependencyError' else self._failed).append(name)
+            if error_type == 'DependencyError':
+                self._skipped.append(name)
+                status = TaskStatus.SKIPPED
+            else:
+                self._failed.append(name)
+                status = TaskStatus.FAILED
+        else:
+            status = TaskStatus.PASSED
 
-        self._callback(self._on_task_done, name, ok)
+        self._callback(self._on_task_done, name, status, len(self._ran))
         self._maybe_schedule_next(logger)
 
         # check for overall completion
@@ -202,7 +218,10 @@ class Scheduler:
         lf = len(failed)
         ls = len(skipped)
         text = f"==== {lp} passed, {lf} failed, {ls} skipped in {summary['duration']:.2f}s ===="
-        summary['text'] = f'{Style.BRIGHT + Fore.BLUE + text + Style.RESET_ALL}'
+        if HAS_COLOR:
+            summary['text'] = f'{Style.BRIGHT + Fore.BLUE + text + Style.RESET_ALL}'
+        else:
+            summary['text'] = text
         return summary
 
     def _handle_interrupt(self, logger):
@@ -369,7 +388,7 @@ class Scheduler:
         except Exception as exception:
             error_type = type(exception).__name__
             error = str(exception)
-            logger.error(f'{function.__name__}: FAILED: {error_type}: {error}')
+            logger.error(f'{function.__name__}: {error_type}: {error}')
         return (name, ok, error_type, error)
 
     def _callback(self, callback, *args):
