@@ -139,7 +139,7 @@ def _maybe_setup_progress_output(scheduler, args):
             # disable error logging noise
             logging.disable(logging.ERROR)
 
-        def on_task_done(name, status, count, total, pb):
+        def on_task_done(name, thread_name, status, count, total, pb):
             pb.count += 1
             pb.alias = name
 
@@ -151,17 +151,18 @@ def _maybe_setup_progress_output(scheduler, args):
             # suppress scheduler logging noise
             sys.stderr = open(os.devnull, 'w')
 
-            def on_task_done(name, status, count, total):
+            def on_task_done(name, thread_name, status, count, total):
                 print('.' if status == TaskStatus.PASSED else '*', end='', flush=True)
 
             scheduler.on_task_done(on_task_done, total)
             scheduler.on_scheduler_done(lambda s: print('', flush=True))
         else:
-            def on_task_done(name, status, count, total):
+            def on_task_done(name, thread_name, status, count, total):
                 _percent = int((count / total) * 100)
                 percent = f'{status.value} [{_percent:3d}% ]'
-                dots = '.' * max(0, 70 - len(name) - len(percent))
-                logger.info(f'{name} {dots} {percent}')
+                base = f'[{thread_name}] {name}' if thread_name else name
+                dots = '.' * max(0, 75 - len(base) - len(percent))
+                logger.info(f'{base} {dots} {percent}')
 
             scheduler.on_task_done(on_task_done, total)
         return nullcontext()

@@ -1,4 +1,5 @@
 import os
+import re
 import queue
 import threading
 import logging
@@ -131,14 +132,14 @@ class Scheduler:
                 error = f'skipped due to failed dependency: {failed_deps}'
                 # add to active to avoid re-selection
                 self._active.add(cand)
-                self._events.put(('done', (cand, False, 'DependencyError', error)))
+                self._events.put(('done', (cand, '', False, 'DependencyError', error)))
             else:
                 self._submit(cand)
 
     def _handle_done(self, payload, logger):
         """ process a completed task, record its result, and schedule next tasks
         """
-        name, ok, error_type, error = payload
+        name, thread_name, ok, error_type, error = payload
         logger.debug(f'removing {name!r} from active futures')
         self._active.discard(name)
         self._graph.remove(name)
@@ -158,7 +159,7 @@ class Scheduler:
         else:
             status = TaskStatus.PASSED
 
-        self._callback(self._on_task_done, name, status, len(self._ran))
+        self._callback(self._on_task_done, name, thread_name, status, len(self._ran))
         self._maybe_schedule_next(logger)
 
         # check for overall completion
@@ -363,11 +364,11 @@ class Scheduler:
     def _run(self, name):
         """ execute a task callable, capture errors, and return its result tuple
         """
-        thread = threading.current_thread().name
-        logger = logging.getLogger(thread)
+        thread_name = self._get_thread_name()
+        logger = logging.getLogger(thread_name)
 
         # queue 'run' event
-        payload = (name, thread)
+        payload = (name, thread_name)
         self._events.put(('run', payload))
 
         logger.debug(f'run {name!r}')
@@ -389,7 +390,7 @@ class Scheduler:
             error_type = type(exception).__name__
             error = str(exception)
             logger.error(f'{function.__name__}: {error_type}: {error}')
-        return (name, ok, error_type, error)
+        return (name, thread_name, ok, error_type, error)
 
     def _callback(self, callback, *args):
         """ safely invoke a user callback, logging any exceptions raised
@@ -431,6 +432,13 @@ class Scheduler:
         """ register callback fired when the scheduler completes all tasks
         """
         self._on_scheduler_done = (function, args, kwargs)
+
+    def _get_thread_name(self):
+        """ return the current thread name with zero-padded numeric suffix
+        """
+        thread_name = threading.current_thread().name
+        width = len(str(self._workers - 1))
+        return re.sub(r'(\d+)$', lambda m: m.group(1).zfill(width), thread_name)
 
     @property
     def graph(self):
