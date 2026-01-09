@@ -48,25 +48,41 @@ if HAS_COLOR:
             raw_msg = record.getMessage()
             colored_msg = self._apply_highlights(raw_msg)
 
-            thread_name = record.threadName
+            # only log thread name if it's not MainThread
+            # to avoid cluttering the logs with 'MainThread' entries
+            _thread_name = record.threadName if record.threadName != 'MainThread' else ''
+            thread_name = f'[{_thread_name}] ' if _thread_name else ''
 
             if self.verbose:
                 msg = (
                     f"{Style.DIM}{timestamp}{Style.RESET_ALL} "
                     f"{level_color}{record.levelname:<5}{Style.RESET_ALL} "
-                    f"[{thread_name}] "
+                    f"{thread_name}"
                     f"{Fore.WHITE}{record.funcName}: {colored_msg}{Style.RESET_ALL}"
                 )
             else:
                 msg = (
                     f"{Style.DIM}{timestamp}{Style.RESET_ALL} "
-                    f"[{thread_name}] "
+                    f"{thread_name}"
                     f"{colored_msg}{Style.RESET_ALL}"
                 )
             if record.exc_info:
                 msg += '\n' + self.formatException(record.exc_info)
 
             return msg
+
+class MainThreadAwareFormatter(logging.Formatter):
+    def __init__(self, main_fmt, thread_fmt, *args, **kwargs):
+        super().__init__(fmt=main_fmt, *args, **kwargs)
+        self.main_fmt = main_fmt
+        self.thread_fmt = thread_fmt
+
+    def format(self, record):
+        if record.threadName == 'MainThread':
+            self._style._fmt = self.main_fmt
+        else:
+            self._style._fmt = self.thread_fmt
+        return super().format(record)
 
 class ThreadProxyLogger:
     def __getattr__(self, name):
@@ -90,7 +106,9 @@ def configure_logging(workers, prefix='thread', add_stream_handler=False, highli
             init(autoreset=False)
             stream_formatter = ColoredFormatter(highlights=highlights, verbose=verbose)
         else:
-            stream_formatter = file_formatter
+            main_fmt = '$%(asctime)s %(message)s'
+            thread_fmt = '%(asctime)s [%(threadName)s] %(message)s'
+            stream_formatter = MainThreadAwareFormatter(main_fmt, thread_fmt)
 
         stream_handler = logging.StreamHandler(sys.stderr)
         stream_handler.setFormatter(stream_formatter)
