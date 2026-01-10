@@ -105,7 +105,7 @@ You get:
 * Graph inspection (`--graph`) to validate ordering and parallelism
 * Clean pass/fail summary
 * Functions with failed dependendencies are skipped (default behaivor)
-* Progress Bar integration-ready
+* Progress Bar integration-ready - requires [progress1bar](https://pypi.org/project/progress1bar) package.
 
 ### CLI usage
 ```bash
@@ -414,14 +414,6 @@ def test_f(state): return run('test_f', state, deps=['test_b', 'test_d'])
 
 ![example7](https://github.com/soda480/threaded-order/blob/main/docs/images/example7.gif?raw=true)
 
-
-### ProgressBar Integration [Example](https://github.com/soda480/threaded-order/blob/main/examples/example5.py)
-
-Can be done by using the `on_task_done` callback. See [example5](https://github.com/soda480/threaded-order/blob/main/examples/example5.py)
-
-![example5](https://github.com/soda480/threaded-order/blob/main/docs/images/example5.gif?raw=true)
-
-`tdrun` CLI progress bar integration provided via `--progress` argument, requires installation of [progress1bar](https://pypi.org/project/progress1bar) package.
 
 ## Development
 
