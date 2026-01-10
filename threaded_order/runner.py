@@ -152,7 +152,13 @@ def _maybe_setup_progress_output(scheduler, args):
             sys.stderr = open(os.devnull, 'w')
 
             def on_task_done(name, thread_name, status, count, total):
-                print('.' if status == TaskStatus.PASSED else '*', end='', flush=True)
+                if status == TaskStatus.PASSED:
+                    char = '.'
+                elif status == TaskStatus.FAILED:
+                    char = 'f'
+                else:
+                    char = 's'
+                print(char, end='', flush=True)
 
             scheduler.on_task_done(on_task_done, total)
             scheduler.on_scheduler_done(lambda s: print('', flush=True))
