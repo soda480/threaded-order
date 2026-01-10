@@ -10,8 +10,8 @@ def setup_state(state):
         'faker': Faker()
     })
 
-def setup_logging(workers, verbose):
-    configure_logging(workers, prefix='thread', add_stream_handler=True, verbose=verbose)
+# def setup_logging(workers, verbose):
+#     configure_logging(workers, prefix='thread', add_stream_handler=True, verbose=verbose)
 
 def run(name, state, deps=None, fail=False):
     with state['_state_lock']:
