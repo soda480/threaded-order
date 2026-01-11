@@ -86,6 +86,8 @@ tdrun path/to/module.py
 
 ### `tdrun` [Example](https://github.com/soda480/threaded-order/blob/main/examples/example4c.py)
 
+![graph](https://github.com/soda480/threaded-order/blob/main/docs/images/graph.png?raw=true)
+
 <details><summary>Code</summary>
 
 ```Python
