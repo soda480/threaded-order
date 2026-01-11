@@ -6,14 +6,12 @@ from threaded_order import mark, ThreadProxyLogger
 logger = ThreadProxyLogger()
 
 def setup_state(state):
-    state.update({
-        'faker': Faker()
-    })
+    state.update({'faker': Faker()})
 
 def run(name, state, deps=None, fail=False):
     with state['_state_lock']:
         last_name = state['faker'].last_name()
-    sleep = random.uniform(.5, 3.5)
+    sleep = random.uniform(.3, 2.5)
     logger.debug(f'{name} \"{last_name}\" running - sleeping {sleep:.2f}s')
     time.sleep(sleep)
     if fail:
@@ -25,23 +23,23 @@ def run(name, state, deps=None, fail=False):
             results.append(f'{name}.{dep_result}')
         if not results:
             results.append(name)
-        logger.info(f'{name} PASSED')
+        logger.debug(f'{name} PASSED')
         return '|'.join(results)
 
 @mark()
-def test_a(state): return run('test_a', state)
+def task_a(state): return run('task_a', state)
 
-@mark(after=['test_a'])
-def test_b(state): return run('test_b', state, deps=['test_a'])
+@mark(after=['task_a'])
+def task_b(state): return run('task_b', state, deps=['task_a'])
 
-@mark(after=['test_a'])
-def test_c(state): return run('test_c', state, deps=['test_a'])
+@mark(after=['task_a'])
+def task_c(state): return run('task_c', state, deps=['task_a'])
 
-@mark(after=['test_c'])
-def test_d(state): return run('test_d', state, deps=['test_c'], fail=True)
+@mark(after=['task_c'])
+def task_d(state): return run('task_d', state, deps=['task_c'], fail=True)
     
-@mark(after=['test_c'])
-def test_e(state): return run('test_e', state, deps=['test_c'])
+@mark(after=['task_c'])
+def task_e(state): return run('task_e', state, deps=['task_c'])
 
-@mark(after=['test_b', 'test_d'])
-def test_f(state): return run('test_f', state, deps=['test_b', 'test_d'])
+@mark(after=['task_b', 'task_d'])
+def task_f(state): return run('task_f', state, deps=['task_b', 'task_d'])

@@ -40,55 +40,6 @@ If you’re new to DAGs or want a quick refresher, this short primer is helpful:
 pip install threaded-order
 ```
 
-## API Overview
-```python
-class Scheduler(
-    workers=None,                 # max number of worker threads
-    state=None,                   # shared state dict passed to @mark functions
-    store_results=True,           # save return values into state["results"]
-    clear_results_on_start=True,  # wipe previous results
-    setup_logging=False,          # enable built-in logging config
-    add_stream_handler=True,      # attach stream handler to logger
-    verbose=False,                # enable extra debug logging
-    skip_dependents=False         # skip dependents when prerequisites fail
-)
-```
-
-Runs registered callables across multiple threads while respecting declared dependencies.
-
-### Core Methods
-| Method | Description |
-| --- | --- |
-| `register(obj, name, after=None, with_state=False)` |	Register a callable for execution. after defines dependencies by name, specify if function is to receive the shared state. |
-| `dregister(after=None, with_state=False)` | Decorator variant of register() for inline task definitions. |
-| `start()` | Start execution, respecting dependencies. Returns a summary dictionary. |
-| `mark(after=None, with_state=True, tags=None)` | Decorator that marks a function for deferred registration by the scheduler, allowing you to declare dependencies (after) and whether the function should receive the shared state (with_state), and optionally add tags to the function (tags) for execution filtering. |
-
-### Callbacks
-
-All are optional and run on the scheduler thread (never worker threads).
-
-| Callback | When Fired | Signature |
-| --- | --- | --- |
-| `on_task_start(fn)`      | Before a task starts | (name) |
-| `on_task_run(fn)`        | When tasks starts running on a thread | (name, thread) |
-| `on_task_done(fn)`       | After a task finishes | (name, ok) |
-| `on_scheduler_start(fn)` | Before scheduler starts running tasks | (meta) |
-| `on_scheduler_done(fn)`  | After all tasks complete | (summary) |
-
-### Shared state and `_state_lock`
-
-If `with_state=True`, tasks receive the shared state dict.
-Threaded-order inserts a re-entrant lock at state['_state_lock'] you can use when modifying shared values.
-
-For more information refer to [Shared State Guidelines](https://github.com/soda480/threaded-order/blob/main/docs/shared_state.md)
-
-### Interrupt Handling
-
-Press Ctrl-C during execution to gracefully cancel outstanding work:
-* Running tasks finish naturally or are marked as cancelled
-* Remaining queued tasks are discarded
-* Final summary reflects all results
 
 ## CLI Overview (`tdrun`)
 
@@ -132,6 +83,63 @@ options:
 ```bash
 tdrun path/to/module.py
 ```
+
+### `tdrun` [Example](https://github.com/soda480/threaded-order/blob/main/examples/example4c.py)
+
+<details><summary>Code</summary>
+
+```Python
+import time
+import random
+from faker import Faker
+from threaded_order import mark, ThreadProxyLogger
+
+logger = ThreadProxyLogger()
+
+def setup_state(state):
+    state.update({'faker': Faker()})
+
+def run(name, state, deps=None, fail=False):
+    with state['_state_lock']:
+        last_name = state['faker'].last_name()
+    sleep = random.uniform(.5, 3.5)
+    logger.debug(f'{name} \"{last_name}\" running - sleeping {sleep:.2f}s')
+    time.sleep(sleep)
+    if fail:
+        assert False, 'Intentional Failure'
+    else:
+        results = []
+        for dep in (deps or []):
+            dep_result = state['results'].get(dep, '--no-result--')
+            results.append(f'{name}.{dep_result}')
+        if not results:
+            results.append(name)
+        logger.debug(f'{name} PASSED')
+        return '|'.join(results)
+
+@mark()
+def task_a(state): return run('task_a', state)
+
+@mark(after=['task_a'])
+def task_b(state): return run('task_b', state, deps=['task_a'])
+
+@mark(after=['task_a'])
+def task_c(state): return run('task_c', state, deps=['task_a'])
+
+@mark(after=['task_c'])
+def task_d(state): return run('task_d', state, deps=['task_c'], fail=True)
+    
+@mark(after=['task_c'])
+def task_e(state): return run('task_e', state, deps=['task_c'])
+
+@mark(after=['task_b', 'task_d'])
+def task_f(state): return run('task_f', state, deps=['task_b', 'task_d'])
+```
+
+</details>
+
+![example4c](https://github.com/soda480/threaded-order/blob/main/docs/images/example4c.gif?raw=true)
+
 
 ### Run a single function:
 ```bash
@@ -194,226 +202,64 @@ Stats:
     test_c (children=2)
 ```
 
-## Examples
+## API Overview
+
+threaded-order also exposes a low-level scheduler API for embedding into custom workflows.
+
+Most users should start with `tdrun` CLI.
+
+```python
+class Scheduler(
+    workers=None,                 # max number of worker threads
+    state=None,                   # shared state dict passed to @mark functions
+    store_results=True,           # save return values into state["results"]
+    clear_results_on_start=True,  # wipe previous results
+    setup_logging=False,          # enable built-in logging config
+    add_stream_handler=True,      # attach stream handler to logger
+    verbose=False,                # enable extra debug logging
+    skip_dependents=False         # skip dependents when prerequisites fail
+)
+```
+
+Runs registered callables across multiple threads while respecting declared dependencies.
+
+### Core Methods
+| Method | Description |
+| --- | --- |
+| `register(obj, name, after=None, with_state=False)` |	Register a callable for execution. after defines dependencies by name, specify if function is to receive the shared state. |
+| `dregister(after=None, with_state=False)` | Decorator variant of register() for inline task definitions. |
+| `start()` | Start execution, respecting dependencies. Returns a summary dictionary. |
+| `mark(after=None, with_state=True, tags=None)` | Decorator that marks a function for deferred registration by the scheduler, allowing you to declare dependencies (after) and whether the function should receive the shared state (with_state), and optionally add tags to the function (tags) for execution filtering. |
+
+### Callbacks
+
+All are optional and run on the scheduler thread (never worker threads).
+
+| Callback | When Fired | Signature |
+| --- | --- | --- |
+| `on_task_start(fn)`      | Before a task starts | (name) |
+| `on_task_run(fn)`        | When tasks starts running on a thread | (name, thread) |
+| `on_task_done(fn)`       | After a task finishes | (name, ok) |
+| `on_scheduler_start(fn)` | Before scheduler starts running tasks | (meta) |
+| `on_scheduler_done(fn)`  | After all tasks complete | (summary) |
+
+### Shared state and `_state_lock`
+
+If `with_state=True`, tasks receive the shared state dict.
+Threaded-order inserts a re-entrant lock at state['_state_lock'] you can use when modifying shared values.
+
+For more information refer to [Shared State Guidelines](https://github.com/soda480/threaded-order/blob/main/docs/shared_state.md)
+
+### Interrupt Handling
+
+Press Ctrl-C during execution to gracefully cancel outstanding work:
+* Running tasks finish naturally or are marked as cancelled
+* Remaining queued tasks are discarded
+* Final summary reflects all results
+
+## More Examples
 
 See the examples/ folder for runnable demos.
-
-### Basic usage [Example](https://github.com/soda480/threaded-order/blob/main/examples/example4.py)
-
-![graph](https://github.com/soda480/threaded-order/blob/main/docs/images/graph.png?raw=true)
-
-<details><summary>Code</summary>
-
-```Python
-from threaded_order import Scheduler, ThreadProxyLogger
-import time
-import random
-
-s = Scheduler(workers=3, setup_logging=True)
-logger = ThreadProxyLogger()
-
-def run(name):
-    time.sleep(random.uniform(.5, 3.5))
-    logger.info(f'{name} completed')
-
-@s.dregister()
-def a(): run('a')
-
-@s.dregister(after=['a'])
-def b(): run('b')
-
-@s.dregister(after=['a'])
-def c(): run('c')
-
-@s.dregister(after=['c'])
-def d(): run('d')
-
-@s.dregister(after=['c'])
-def e(): run('e')
-
-@s.dregister(after=['b', 'd'])
-def f(): run('f')
-
-if __name__ == '__main__':
-    s.on_scheduler_done(lambda s: print(f"Passed:{len(s['passed'])} Failed:{len(s['failed'])}"))
-    s.start()
-```
-
-</details>
-
-![example4](https://github.com/soda480/threaded-order/blob/main/docs/images/example4.gif?raw=true)
-
-### Shared State [Example](https://github.com/soda480/threaded-order/blob/main/examples/example6.py)
-
-<details><summary>Code</summary>
-
-```Python
-import json
-from time import sleep
-from threaded_order import Scheduler
-
-s = Scheduler(workers=3, state={})
-
-@s.dregister(with_state=True)
-def load(state):
-    with state['_state_lock']:
-        state['counter'] = state.get('counter', 0) + 1
-    state["x"] = 10; return "loaded"
-
-@s.dregister(with_state=True)
-def behave(state):
-    with state['_state_lock']:
-        state['counter'] = state.get('counter', 0) + 1
-    sleep(3); return "behaved"
-
-@s.dregister(after=["load"], with_state=True)
-def compute(state):
-    with state['_state_lock']:
-        state['counter'] = state.get('counter', 0) + 1
-    state["x"] += 5; return state["x"]
-
-s.start()
-print(json.dumps(s.state, indent=2, default=str))
-```
-
-</details>
-
-```bash
-{
-  "_state_lock": "<unlocked _thread.RLock object owner=0 count=0 at 0x7ac9632852c0>",
-  "results": {
-    "load": "loaded",
-    "compute": 15,
-    "behave": "behaved"
-  },
-  "counter": 3,
-  "x": 15
-}
-```
-
-### `tdrun` [Example](https://github.com/soda480/threaded-order/blob/main/examples/example4c.py)
-
-<details><summary>Code</summary>
-
-```Python
-import time
-import random
-from faker import Faker
-from threaded_order import mark, configure_logging, ThreadProxyLogger
-
-logger = ThreadProxyLogger()
-
-def setup_state(state):
-    state.update({
-        'faker': Faker()
-    })
-
-def setup_logging(workers, verbose):
-    configure_logging(workers, prefix='thread', add_stream_handler=True, verbose=verbose)
-
-def run(name, state, deps=None, fail=False):
-    with state['_state_lock']:
-        last_name = state['faker'].last_name()
-    sleep = random.uniform(.5, 3.5)
-    logger.debug(f'{name} \"{last_name}\" running - sleeping {sleep:.2f}s')
-    time.sleep(sleep)
-    if fail:
-        assert False, 'Intentional Failure'
-    else:
-        results = []
-        for dep in (deps or []):
-            dep_result = state['results'].get(dep, '--no-result--')
-            results.append(f'{name}.{dep_result}')
-        if not results:
-            results.append(name)
-        logger.info(f'{name} PASSED')
-        return '|'.join(results)
-
-@mark(with_state=True)
-def test_a(state): return run('test_a', state)
-
-@mark(after=['test_a'])
-def test_b(state): return run('test_b', state, deps=['test_a'])
-
-@mark(after=['test_a'])
-def test_c(state): return run('test_c', state, deps=['test_a'])
-
-@mark(after=['test_c'])
-def test_d(state): return run('test_d', state, deps=['test_c'], fail=True)
-    
-@mark(after=['test_c'])
-def test_e(state): return run('test_e', state, deps=['test_c'])
-
-@mark(after=['test_b', 'test_d'])
-def test_f(state): return run('test_f', state, deps=['test_b', 'test_d'])
-```
-
-</details>
-
-![example4c](https://github.com/soda480/threaded-order/blob/main/docs/images/example4c.gif?raw=true)
-
-
-### `tdrun` tag filtering [Example](https://github.com/soda480/threaded-order/blob/main/examples/example7.py)
-
-<details><summary>Code</summary>
-
-```Python
-import time
-import random
-from faker import Faker
-from threaded_order import mark, configure_logging, ThreadProxyLogger
-
-logger = ThreadProxyLogger()
-
-def setup_state(state):
-    state.update({
-        'faker': Faker()
-    })
-
-def setup_logging(workers, verbose):
-    configure_logging(workers, prefix='thread', add_stream_handler=True, verbose=verbose)
-
-def run(name, state, deps=None, fail=False):
-    with state['_state_lock']:
-        last_name = state['faker'].last_name()
-    sleep = random.uniform(.5, 3.5)
-    logger.debug(f'{name} \"{last_name}\" running - sleeping {sleep:.2f}s')
-    time.sleep(sleep)
-    if fail:
-        assert False, 'Intentional Failure'
-    else:
-        results = []
-        for dep in (deps or []):
-            dep_result = state.get(dep, '--no-result--')
-            results.append(f'{name}.{dep_result}')
-        if not results:
-            results.append(name)
-        logger.info(f'{name} PASSED')
-        state[name] = '|'.join(results)
-
-@mark(tags='layer1')
-def test_a(state): return run('test_a', state)
-
-@mark(after=['test_a'], tags='layer2')
-def test_b(state): return run('test_b', state, deps=['test_a'])
-
-@mark(after=['test_a'], tags='layer2')
-def test_c(state): return run('test_c', state, deps=['test_a'])
-
-@mark(after=['test_c'], tags='layer3')
-def test_d(state): return run('test_d', state, deps=['test_c'], fail=True)
-    
-@mark(after=['test_c'], tags='layer3')
-def test_e(state): return run('test_e', state, deps=['test_c'])
-
-@mark(after=['test_b', 'test_d'], tags='layer4')
-def test_f(state): return run('test_f', state, deps=['test_b', 'test_d'])
-```
-
-</details>
-
-![example7](https://github.com/soda480/threaded-order/blob/main/docs/images/example7.gif?raw=true)
-
 
 ## Development
 
