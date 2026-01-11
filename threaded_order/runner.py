@@ -10,6 +10,7 @@ from contextlib import nullcontext
 from pathlib import Path
 from threaded_order import Scheduler, ThreadProxyLogger, default_workers
 from threaded_order.graph_summary import format_graph_summary
+from threaded_order.scheduler import TaskStatus
 try:
     from progress1bar import ProgressBar
     HAS_PROGRESS_BAR = True
@@ -130,6 +131,7 @@ def collect_functions(module, tags_filter=None):
 def _maybe_setup_progress_output(scheduler, args):
     """ configure progress output based on args
     """
+    total = len(scheduler.graph.nodes())
     if args.progress:
         if not HAS_PROGRESS_BAR:
             raise SystemExit('progress1bar package is required for progress bar output')
@@ -137,25 +139,38 @@ def _maybe_setup_progress_output(scheduler, args):
             # disable error logging noise
             logging.disable(logging.ERROR)
 
-        def on_task_done(name, ok, pb):
+        def on_task_done(name, thread_name, status, count, total, pb):
             pb.count += 1
             pb.alias = name
 
-        total = len(scheduler.graph.nodes())
         pb = ProgressBar(total=total, show_complete=False, clear_alias=True)
-        scheduler.on_task_done(on_task_done, pb)
+        scheduler.on_task_done(on_task_done, total, pb)
         return pb
-
     else:
         if not args.log:
             # suppress scheduler logging noise
             sys.stderr = open(os.devnull, 'w')
 
-            def on_task_done(name, ok):
-                print('.' if ok else '*', end='', flush=True)
+            def on_task_done(name, thread_name, status, count, total):
+                if status == TaskStatus.PASSED:
+                    char = '.'
+                elif status == TaskStatus.FAILED:
+                    char = 'f'
+                else:
+                    char = 's'
+                print(char, end='', flush=True)
 
-            scheduler.on_task_done(on_task_done)
+            scheduler.on_task_done(on_task_done, total)
             scheduler.on_scheduler_done(lambda s: print('', flush=True))
+        else:
+            def on_task_done(name, thread_name, status, count, total):
+                _percent = int((count / total) * 100)
+                percent = f'{status.value} [{_percent:3d}% ]'
+                base = f'[{thread_name}] {name}' if thread_name else name
+                dots = '.' * max(0, 75 - len(base) - len(percent))
+                logger.info(f'{base} {dots} {percent}')
+
+            scheduler.on_task_done(on_task_done, total)
         return nullcontext()
 
 def _register_functions(scheduler, marked_functions, tags_filter, single_function_mode):
