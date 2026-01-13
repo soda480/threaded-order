@@ -16,7 +16,7 @@ Use it when you want:
 * Deterministic behavior even under concurrency
 * A DAG-driven execution model without heavyweight tooling
 * A clean decorator-based API for organizing tasks
-* A CLI (`tdrun`) for running functions as parallel tests
+* A CLI (`tdrun`) for running functions as parallel tasks
 
 ## Key Features
 * Parallel execution using Python threads backed by a dependency DAG

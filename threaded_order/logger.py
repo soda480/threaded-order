@@ -30,7 +30,6 @@ if HAS_COLOR:
         def __init__(self, workers, *args, **kwargs):
             self.highlights = kwargs.pop('highlights', []) or self.DEFAULT_HIGHLIGHTS
             self.verbose = kwargs.pop('verbose', False)
-            self.thread_width = len(str(workers - 1))
             super().__init__(*args, **kwargs)
 
         def _apply_highlights(self, message):
@@ -54,7 +53,7 @@ if HAS_COLOR:
             if record.threadName == 'MainThread':
                 thread_name = ''
             else:
-                thread_name = f'[{self.pad_thread_name(record.threadName)}] '
+                thread_name = f'[{record.threadName}] '
 
             if self.verbose:
                 msg = (
@@ -74,9 +73,6 @@ if HAS_COLOR:
 
             return msg
 
-        def pad_thread_name(self, name):
-            return re.sub(r'(\d+)$', lambda m: m.group(1).zfill(self.thread_width), name)
-
 class MainThreadAwareFormatter(logging.Formatter):
 
     def __init__(self, main_fmt, thread_fmt, workers, thread_prefix='thread_', *args, **kwargs):
@@ -84,23 +80,8 @@ class MainThreadAwareFormatter(logging.Formatter):
         self.main_fmt = main_fmt
         self.thread_fmt = thread_fmt
         self.thread_prefix = thread_prefix
-        self.thread_width = len(str(workers - 1))
 
     def format(self, record):
-        if record.threadName.startswith(self.thread_prefix):
-            try:
-                # Extract the thread index from the thread name after the prefix
-                thread_number = int(record.threadName[len(self.thread_prefix):])
-                # Pad the index with leading zeros to match thread width
-                padded = f'{self.thread_prefix}{thread_number:0{self.thread_width}d}'
-
-            except ValueError:
-                padded = record.threadName
-        else:
-            padded = record.threadName
-
-        record.paddedThreadName = padded
-
         if record.threadName == 'MainThread':
             self._style._fmt = self.main_fmt
         else:
@@ -130,7 +111,7 @@ def configure_logging(workers, prefix='thread', add_stream_handler=False, highli
             stream_formatter = ColoredFormatter(workers, highlights=highlights, verbose=verbose)
         else:
             main_fmt = '%(asctime)s %(message)s'
-            thread_fmt = '%(asctime)s [%(paddedThreadName)s] %(message)s'
+            thread_fmt = '%(asctime)s [%(threadName)s] %(message)s'
             stream_formatter = MainThreadAwareFormatter(main_fmt, thread_fmt, workers)
 
         stream_handler = logging.StreamHandler(sys.stderr)

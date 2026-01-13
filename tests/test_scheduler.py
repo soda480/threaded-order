@@ -256,7 +256,6 @@ class TestScheduler(unittest.TestCase):
             s._done(future_mock)
             events_patch.put.assert_called_once_with(('done', ('task1', False, 'Exception', 'error')))
 
-    @patch('threaded_order.scheduler.Scheduler._get_thread_name', return_value='thread_0')
     def test_run_When_WithState(self, *patches):
         s = Scheduler(store_results=True)
         function_mock = Mock(__name__='task1')
@@ -265,9 +264,8 @@ class TestScheduler(unittest.TestCase):
             result = s._run('task1')
             function_mock.assert_called_once_with(s.state)
             self.assertEqual(s.state['results']['task1'], function_mock.return_value)
-            self.assertEqual(result, ('task1', 'thread_0', True, None, None))
+            self.assertEqual(result, ('task1', 'MainThread', True, None, None))
 
-    @patch('threaded_order.scheduler.Scheduler._get_thread_name', return_value='thread_0')
     def test_run_When_WithNoState(self, *patches):
         s = Scheduler(store_results=False)
         function_mock = Mock(__name__='task1')
@@ -275,9 +273,8 @@ class TestScheduler(unittest.TestCase):
         with patch.object(s, '_events') as events_patch:
             result = s._run('task1')
             function_mock.assert_called_once_with()
-            self.assertEqual(result, ('task1', 'thread_0', True, None, None))
+            self.assertEqual(result, ('task1', 'MainThread', True, None, None))
 
-    @patch('threaded_order.scheduler.Scheduler._get_thread_name', return_value='thread_0')
     def test_run_When_Exception(self, *patches):
         s = Scheduler(store_results=True)
         function_mock = Mock(__name__='task1')
@@ -286,7 +283,7 @@ class TestScheduler(unittest.TestCase):
         with patch.object(s, '_events') as events_patch:
             result = s._run('task1')
             function_mock.assert_called_once_with(s.state)
-            self.assertEqual(result, ('task1', 'thread_0', False, 'Exception', 'error'))
+            self.assertEqual(result, ('task1', 'MainThread', False, 'Exception', 'error'))
 
     def test_callback_When_NoCallback(self, *patches):
         s = Scheduler()
