@@ -1,5 +1,6 @@
 import ast
 import os
+import re
 import sys
 import logging
 import argparse
@@ -166,12 +167,18 @@ def _maybe_setup_progress_output(scheduler, args):
             def on_task_done(name, thread_name, status, count, total):
                 _percent = int((count / total) * 100)
                 percent = f'{status.value} [{_percent:3d}% ]'
-                base = f'[{thread_name}] {name}' if thread_name else name
+                base = f'[{_pad_thread_name(thread_name, args.workers)}] {name}' if thread_name else name
                 dots = '.' * max(0, 75 - len(base) - len(percent))
                 logger.info(f'{base} {dots} {percent}')
 
             scheduler.on_task_done(on_task_done, total)
         return nullcontext()
+
+def _pad_thread_name(name, workers):
+    """ pad thread name numbers with leading zeros for consistent width
+    """
+    width = len(str(workers - 1))
+    return re.sub(r'(\d+)$', lambda m: m.group(1).zfill(width), name)
 
 def _register_functions(scheduler, marked_functions, tags_filter, single_function_mode):
     """ register collected functions with the scheduler

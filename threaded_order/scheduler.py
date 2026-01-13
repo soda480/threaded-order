@@ -364,7 +364,7 @@ class Scheduler:
     def _run(self, name):
         """ execute a task callable, capture errors, and return its result tuple
         """
-        thread_name = self._get_thread_name()
+        thread_name = threading.current_thread().name
         logger = logging.getLogger(thread_name)
 
         # queue 'run' event
@@ -432,13 +432,6 @@ class Scheduler:
         """ register callback fired when the scheduler completes all tasks
         """
         self._on_scheduler_done = (function, args, kwargs)
-
-    def _get_thread_name(self):
-        """ return the current thread name with zero-padded numeric suffix
-        """
-        thread_name = threading.current_thread().name
-        width = len(str(self._workers - 1))
-        return re.sub(r'(\d+)$', lambda m: m.group(1).zfill(width), thread_name)
 
     @property
     def graph(self):

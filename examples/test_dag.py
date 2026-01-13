@@ -48,7 +48,7 @@ def test_01_03(state): return run('test_01_03', state)
 def test_01_04(state): return run('test_01_04', state)
 
 @mark(tags='layer1')
-def test_01_05(state): return run('test_01_05', state)
+def test_01_05(state): return run('test_01_05', state, fail=True)
 
 # parent of 2 children in layer2
 @mark(tags='layer1')
@@ -81,7 +81,7 @@ def test_02_01(state): return run('test_02_01', state, deps=['test_01_03'])
 def test_02_02(state): return run('test_02_02', state, deps=['test_01_03'])
 
 @mark(after=['test_01_03'], tags='layer2')
-def test_02_03(state): return run('test_02_03', state, deps=['test_01_03'])
+def test_02_03(state): return run('test_02_03', state, deps=['test_01_03'], fail=True)
 
 @mark(after=['test_01_03'], tags='layer2')
 def test_02_04(state): return run('test_02_04', state, deps=['test_01_03'])
@@ -152,7 +152,7 @@ def test_04_01(state): return run('test_04_01', state, deps=['test_03_01'])
 
 # parent of 2 children in layer5
 @mark(after=['test_03_01'], tags='layer4,capA')
-def test_04_02(state): return run('test_04_02', state, deps=['test_03_01'])
+def test_04_02(state): return run('test_04_02', state, deps=['test_03_01'], fail=True)
 
 @mark(after=['test_03_01'], tags='layer4,capA')
 def test_04_03(state): return run('test_04_03', state, deps=['test_03_01'])
