@@ -1,5 +1,4 @@
 import os
-import re
 import queue
 import threading
 import logging

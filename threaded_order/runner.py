@@ -167,7 +167,8 @@ def _maybe_setup_progress_output(scheduler, args):
             def on_task_done(name, thread_name, status, count, total):
                 _percent = int((count / total) * 100)
                 percent = f'{status.value} [{_percent:3d}% ]'
-                base = f'[{_pad_thread_name(thread_name, args.workers)}] {name}' if thread_name else name
+                base = f'[{_pad_thread_name(thread_name, args.workers)}] {name}' \
+                    if thread_name else name
                 dots = '.' * max(0, 75 - len(base) - len(percent))
                 logger.info(f'{base} {dots} {percent}')
 
