@@ -1,8 +1,6 @@
 import ast
-import os
 import re
 import sys
-import logging
 import argparse
 import json
 import importlib.util
@@ -17,6 +15,11 @@ try:
     HAS_PROGRESS_BAR = True
 except ImportError:
     HAS_PROGRESS_BAR = False
+try:
+    from thread_viewer import ThreadViewer
+    HAS_VIEWER = True
+except ImportError:
+    HAS_VIEWER = False
 
 logger = ThreadProxyLogger()
 
@@ -59,12 +62,16 @@ def get_parser():
         '--progress',
         action='store_true',
         help='show progress bar (requires progress1bar package)')
+    parser.add_argument(
+        '--viewer',
+        action='store_true',
+        help='show thread viewer visualizer (requires thread-viewer package)')
     return parser
 
 def get_initial_state(unknown_args):
     """ parse arbitrary --key=value pairs from the unknown args list
         Example:
-        ["--env=dev", "--region=us-west-2"] -> {"env": "dev", "region": "us_west_2"}
+        ["--env=dev", "--region=us_west_2"] -> {"env": "dev", "region": "us_west_2"}
     """
     initial_state = {}
     clear_results_on_start = True
@@ -98,60 +105,84 @@ def load_module(path):
     if not path.exists():
         raise FileNotFoundError(f"Module file '{path}' not found")
     spec = importlib.util.spec_from_file_location(path.stem, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load module from '{path}'")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 def get_functions(module):
-    """ yield (name, function) for all functions defined as they appear in the module
+    """ yield (name, function, is_async) for top-level defs in source order.
     """
     module_path = inspect.getsourcefile(module)
-    with open(module_path, 'r') as f:
+    if not module_path:
+        raise SystemExit('Could not determine source file for target module')
+
+    with open(module_path, 'r', encoding='utf-8') as f:
         tree = ast.parse(f.read(), filename=module_path)
-    function_names = [node.name for node in tree.body if isinstance(node, ast.FunctionDef)]
-    for function_name in function_names:
-        function = getattr(module, function_name)
-        if inspect.isfunction(function):
-            yield function_name, function
+
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            function = getattr(module, node.name, None)
+            if inspect.isfunction(function):
+                yield node.name, function, isinstance(node, ast.AsyncFunctionDef)
 
 def collect_functions(module, tags_filter=None):
     """ return (name, function, meta) for all functions marked by @mark.
     """
     functions = []
-    for name, function in get_functions(module):
+    module_path = inspect.getsourcefile(module) or '<unknown>'
+
+    for name, function, is_async in get_functions(module):
         meta = getattr(function, '__threaded_order__', None)
         if meta is None:
             continue
+
+        if is_async:
+            raise SystemExit(f"Async @mark functions are not supported: '{name}' in {module_path}")
+
         if tags_filter:
-            tags = meta.get('tags')
+            tags = meta.get('tags') or []
             if any(t not in tags for t in tags_filter):
                 continue
+
         functions.append((name, function, meta))
+
     return functions
 
-def _maybe_setup_progress_output(scheduler, args):
+def _setup_output(scheduler, args):
     """ configure progress output based on args
     """
     total = len(scheduler.graph.nodes())
     if args.progress:
         if not HAS_PROGRESS_BAR:
             raise SystemExit('progress1bar package is required for progress bar output')
-        if not args.log:
-            # disable error logging noise
-            logging.disable(logging.ERROR)
 
-        def on_task_done(name, thread_name, status, count, total, pb):
+        def on_task_done(task_name, thread_name, status, count, total, pb, *args):
             pb.count += 1
-            pb.alias = name
+            pb.alias = task_name
 
         pb = ProgressBar(total=total, show_complete=False, clear_alias=True)
         scheduler.on_task_done(on_task_done, total, pb)
         return pb
+
+    elif args.viewer:
+        if not HAS_VIEWER:
+            raise SystemExit('thread-viewer package is required for thread viewer output')
+
+        def on_task_run(task_name, thread_name, viewer, *args):
+            viewer.run(thread_name)
+
+        def on_task_done(task_name, thread_name, status, count, viewer, *args):
+            viewer.done(thread_name)
+
+        viewer = ThreadViewer(thread_count=args.workers, task_count=total, thread_prefix='thread_')
+        scheduler.on_task_run(on_task_run, viewer)
+        scheduler.on_task_done(on_task_done, viewer)
+        return viewer
+
     else:
         if not args.log:
-            # suppress scheduler logging noise
-            sys.stderr = open(os.devnull, 'w')
-
             def on_task_done(name, thread_name, status, count, total):
                 if status == TaskStatus.PASSED:
                     char = '.'
@@ -247,7 +278,7 @@ def _build_scheduler_kwargs(args, initial_state, clear_results_on_start, module)
         'workers': args.workers if args.workers else None,
         'state': initial_state,
         'clear_results_on_start': clear_results_on_start,
-        'skip_dependents': args.skip_deps,
+        'skip_dependents': args.skip_deps
     }
 
     if not args.log:
@@ -260,7 +291,7 @@ def _build_scheduler_kwargs(args, initial_state, clear_results_on_start, module)
     else:
         scheduler_kwargs['setup_logging'] = True
         scheduler_kwargs['verbose'] = args.verbose
-        scheduler_kwargs['add_stream_handler'] = not args.progress
+        scheduler_kwargs['add_stream_handler'] = not args.progress and not args.viewer
 
     return scheduler_kwargs
 
@@ -273,6 +304,16 @@ def validate_args(args):
     if args.progress and args.verbose:
         raise SystemExit(
             'Error: the --progress and --verbose arguments cannot be used together')
+    if args.viewer and not HAS_VIEWER:
+        raise SystemExit(
+            'Error: thread-viewer package is required for viewer output')
+    if args.viewer and args.verbose:
+        raise SystemExit(
+            'Error: the --viewer and --verbose arguments cannot be used together')
+    if args.progress and args.viewer:
+        raise SystemExit('Error: --progress and --viewer cannot be used together')
+    if args.workers < 1:
+        raise SystemExit('Error: --workers must be >= 1')
 
 def _main(argv=None):
     """ main CLI entry point
@@ -308,7 +349,7 @@ def _main(argv=None):
         print(format_graph_summary(scheduler.graph))
         return
 
-    with _maybe_setup_progress_output(scheduler, args):
+    with _setup_output(scheduler, args):
         summary = scheduler.start()
 
     # debug final state and print user-facing summary
@@ -325,7 +366,10 @@ def main(argv=None):
         _main(argv)
         sys.exit(0)
     except Exception as e:
-        print(f"Error: {e}")
+        args = argv if argv is not None else sys.argv[1:]
+        if '--verbose' in args:
+            raise
+        print(f'Error: {e}')
         sys.exit(1)
 
 if __name__ == '__main__':

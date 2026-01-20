@@ -57,10 +57,11 @@ You get:
 * Clean pass/fail summary
 * Functions with failed dependendencies are skipped (default behaivor)
 * Progress Bar integration-ready - requires [progress1bar](https://pypi.org/project/progress1bar) package.
+* Thread Viewer integration-ready - requires [thread-viewer](https://pypi.org/project/thread-viewer/) package.
 
 ### CLI usage
 ```bash
-usage: tdrun [-h] [--workers WORKERS] [--tags TAGS] [--log] [--verbose] [--graph] [--skip-deps] [--progress] target
+usage: tdrun [-h] [--workers WORKERS] [--tags TAGS] [--log] [--verbose] [--graph] [--skip-deps] [--progress] [--viewer] target
 
 A threaded-order CLI for dependency-aware, parallel function execution.
 
@@ -76,6 +77,7 @@ options:
   --graph            show dependency graph and exit
   --skip-deps        skip functions whose dependencies failed
   --progress         show progress bar (requires progress1bar package)
+  --viewer           show thread viewer visualizer (requires thread-viewer package)
 ```
 
 ### Run all marked functions in a module:
@@ -241,7 +243,7 @@ All are optional and run on the scheduler thread (never worker threads).
 | --- | --- | --- |
 | `on_task_start(fn)`      | Before a task starts | (name) |
 | `on_task_run(fn)`        | When tasks starts running on a thread | (name, thread) |
-| `on_task_done(fn)`       | After a task finishes | (name, ok) |
+| `on_task_done(fn)`       | After a task finishes | (name, status, count) |
 | `on_scheduler_start(fn)` | Before scheduler starts running tasks | (meta) |
 | `on_scheduler_done(fn)`  | After all tasks complete | (summary) |
 

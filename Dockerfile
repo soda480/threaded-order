@@ -6,4 +6,4 @@ COPY . /code/
 RUN apt-get update && \
     apt-get install -y --no-install-recommends make && \
     rm -rf /var/lib/apt/lists/*
-RUN pip install --upgrade pip faker mock progress1bar list2term
+RUN pip install --upgrade pip faker mock progress1bar list2term thread-viewer
