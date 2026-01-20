@@ -1,11 +1,13 @@
 from importlib import metadata as _metadata
 import importlib
 from os import getenv
+import warnings
 
-raise ImportError(
-    "The 'threaded-order' package has been renamed.\n\n"
-    "Install the new package instead:\n"
-    "  pip install <new-name>\n"
+warnings.warn(
+    "threaded-order renamed to <new-name>. "
+    "Install via: pip install <new-name>",
+    DeprecationWarning,
+    stacklevel=2,
 )
 __all__ = [
     'Scheduler',
