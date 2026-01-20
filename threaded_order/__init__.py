@@ -2,6 +2,11 @@ from importlib import metadata as _metadata
 import importlib
 from os import getenv
 
+raise ImportError(
+    "The 'threaded-order' package has been renamed.\n\n"
+    "Install the new package instead:\n"
+    "  pip install <new-name>\n"
+)
 __all__ = [
     'Scheduler',
     'DAGraph',
@@ -45,7 +50,7 @@ def __getattr__(name):
 try:
     __version__ = _metadata.version(__name__)
 except _metadata.PackageNotFoundError:
-    __version__ = '1.8.0'
+    __version__ = '1.8.1'
 
 if getenv('DEV'):
     __version__ = f'{__version__}+dev'
